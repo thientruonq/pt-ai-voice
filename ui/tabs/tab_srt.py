@@ -67,6 +67,14 @@ class SRTTab(ctk.CTkFrame):
             file_row, text="📂 Chọn file", width=120, command=self._pick_file
         ).pack(side="right")
 
+        self.btn_remove_files = ctk.CTkButton(
+            file_row, text="🗑️ Xóa file đã chọn", width=160,
+            fg_color="#c62828", hover_color="#8e0000",
+            command=self._remove_selected_files,
+            state="disabled",
+        )
+        self.btn_remove_files.pack(side="right", padx=(0, 8))
+
         # ── Preview segments ───────────────────────────────────────────────
         ctk.CTkLabel(scroll, text="Nội dung phụ đề (preview):", anchor="w").pack(
             fill="x", padx=16, pady=(4, 2)
@@ -82,8 +90,10 @@ class SRTTab(ctk.CTkFrame):
 
         cols = ("#", "srt_goc", "srt_moi", "noi_dung", "trang_thai")
         self.preview_tree = ttk.Treeview(self.tree_frame, columns=cols, show="headings",
-                                         height=12, selectmode="browse",
+                                         height=12, selectmode="extended",
                                          style=self._tree_style_name)
+        # Phím Delete = xóa file/đoạn đã chọn
+        self.preview_tree.bind("<Delete>", lambda e: self._remove_selected_files())
 
         self.preview_tree.heading("#",          text="#")
         self.preview_tree.heading("srt_goc",    text="SRT Gốc")
@@ -334,6 +344,7 @@ class SRTTab(ctk.CTkFrame):
             ))
         self.stats_label.configure(text=f"📚 Batch: {len(paths)} files queued")
         self.btn_merge.configure(state="normal")
+        self.btn_remove_files.configure(state="normal")
         # Cờ batch_iid_map: file_path → iid trong tree (dùng update progress lúc chạy)
         self._batch_iid_map = {p: f"f{i+1}" for i, p in enumerate(paths)}
         # _segments để check has-data trong _export_segments/_generate — set 1 placeholder
@@ -386,6 +397,81 @@ class SRTTab(ctk.CTkFrame):
             tags.append(tag)
         self.preview_tree.item(iid, values=vals, tags=tags)
 
+    def _remove_selected_files(self):
+        """Xóa file/đoạn đã chọn khỏi bảng preview.
+
+        - Batch mode (nhiều file): xóa file khỏi _batch_files + _batch_iid_map.
+        - Single mode (1 file): xóa segment khỏi _segments (skip đoạn không sinh audio).
+        - Nếu xóa hết: reset về trạng thái 'Chưa chọn file'.
+        """
+        selected = self.preview_tree.selection()
+        if not selected:
+            return
+
+        # Batch mode: iid kiểu "f1", "f2", ...
+        is_batch = bool(getattr(self, "_batch_iid_map", None)) and len(self._batch_files) > 1
+        if is_batch:
+            iid_to_path = {iid: p for p, iid in self._batch_iid_map.items()}
+            removed = {iid_to_path[iid] for iid in selected if iid in iid_to_path}
+            self._batch_files = [p for p in self._batch_files if p not in removed]
+            for p in removed:
+                self._batch_iid_map.pop(p, None)
+        else:
+            # Single mode: iid là str(seg.index)
+            removed_idx = set()
+            for iid in selected:
+                try:
+                    removed_idx.add(int(iid))
+                except ValueError:
+                    pass
+            self._segments = [s for s in self._segments if getattr(s, "index", None) not in removed_idx]
+
+        # Xóa khỏi tree
+        for iid in selected:
+            if self.preview_tree.exists(iid):
+                self.preview_tree.delete(iid)
+
+        self._refresh_after_removal()
+
+    def _refresh_after_removal(self):
+        """Cập nhật file_label/stats/buttons sau khi xóa hàng. Renumber cột '#'."""
+        # Renumber cột # cho dễ nhìn
+        for i, iid in enumerate(self.preview_tree.get_children(), 1):
+            vals = list(self.preview_tree.item(iid, "values"))
+            vals[0] = i
+            self.preview_tree.item(iid, values=vals)
+
+        n_batch = len(self._batch_files) if getattr(self, "_batch_iid_map", None) else 0
+        n_rows = len(self.preview_tree.get_children())
+
+        if n_rows == 0:
+            self.file_label.configure(text="Chưa chọn file", text_color="gray")
+            self._segments = []
+            self._batch_files = []
+            self._batch_iid_map = {}
+            self._file_path = ""
+            self.btn_merge.configure(state="disabled")
+            self.btn_remove_files.configure(state="disabled")
+            self.stats_label.configure(text="")
+            return
+
+        if n_batch >= 2:
+            head = ", ".join(Path(p).name for p in self._batch_files[:2])
+            tail = "..." if n_batch > 2 else ""
+            self.file_label.configure(
+                text=f"📚 Batch {n_batch} files: {head}{tail}",
+                text_color="#b39ddb",
+            )
+            self.stats_label.configure(text=f"📚 Batch: {n_batch} files queued")
+        elif n_batch == 1:
+            # Batch còn 1 file → đổi label cho rõ
+            self.file_label.configure(text=Path(self._batch_files[0]).name, text_color="white")
+            self.stats_label.configure(text="📚 Batch: 1 file")
+        else:
+            # Single mode: đếm lại tổng ký tự
+            total_chars = sum(len(s.text) for s in self._segments if hasattr(s, "text"))
+            self.stats_label.configure(text=f"✓ {n_rows} đoạn | Tổng: {total_chars} ký tự")
+
     def _parse_and_preview(self, path: str):
         try:
             remove_special = self.config.get_adv("remove_special_chars", True)
@@ -400,6 +486,7 @@ class SRTTab(ctk.CTkFrame):
             )
             # Enable button ghép khi có segments
             self.btn_merge.configure(state="normal")
+            self.btn_remove_files.configure(state="normal")
         except Exception as e:
             messagebox.showerror("Lỗi đọc file", str(e))
 
