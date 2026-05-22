@@ -216,7 +216,7 @@ class SRTTab(ctk.CTkFrame):
         btn_row.pack(fill="x", padx=16, pady=(4, 12))
 
         self.btn_export_segments = ctk.CTkButton(
-            btn_row, text="🔊 Tạo từng đoạn Audio", width=200,
+            btn_row, text="🔊 Tạo Audio", width=160,
             fg_color="#2e7d32", hover_color="#1b5e20", command=self._export_segments
         )
         self.btn_export_segments.pack(side="left", padx=(0, 10))
