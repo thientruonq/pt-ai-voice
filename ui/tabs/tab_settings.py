@@ -25,8 +25,8 @@ class SettingsTab(ctk.CTkFrame):
         self.restart_cb = restart_cb
         self.status_cb = status_cb
         self._build_ui()
-        # Tự động tải giọng sau khi UI dựng xong
-        self.after(300, self._load_voices)
+        # Tự động tải giọng sau khi UI dựng xong (silent: bỏ qua cảnh báo OmniVoice rỗng)
+        self.after(300, lambda: self._load_voices(show_warnings=False))
 
     def _build_ui(self):
         # Scrollable frame
@@ -362,11 +362,14 @@ class SettingsTab(ctk.CTkFrame):
         short = short.replace("Neural", "").replace("neural", "").strip()
         return f"{gender_icon} {short}  ({locale})"
 
-    def _load_voices(self):
+    def _load_voices(self, show_warnings: bool = True):
         """Tải danh sách giọng — dùng helper chung load_voices_for_config().
 
         OmniVoice: cần Save creds trước khi click (helper đọc config) — nếu chưa
-        save, dùng staging tạm từ UI để Test ngay không cần save."""
+        save, dùng staging tạm từ UI để Test ngay không cần save.
+
+        show_warnings=False: dùng cho auto-load lúc mở app, không hiện popup
+        cảnh báo OmniVoice rỗng (tránh làm phiền nếu user dùng engine khác)."""
         self.btn_load_voices.configure(state="disabled", text="Đang tải...")
 
         # Staging: nếu engine = OmniVoice + user vừa nhập endpoint chưa Save →
@@ -390,7 +393,7 @@ class SettingsTab(ctk.CTkFrame):
                 selected_display = self.lang_var.get()
                 lang_code = self.languages.get(selected_display, "vi-VN")
                 voice_items = load_voices_for_config(self.config, lang_code)
-                self.after(0, lambda: self._update_voice_list(voice_items))
+                self.after(0, lambda: self._update_voice_list(voice_items, show_warnings=show_warnings))
             except Exception as e:
                 print(f"[Load Voices Error] {e}")
                 self.after(0, lambda: self.btn_load_voices.configure(state="normal", text="↺ Tải giọng"))
@@ -424,12 +427,13 @@ class SettingsTab(ctk.CTkFrame):
         import threading
         threading.Thread(target=_do, daemon=True).start()
 
-    def _update_voice_list(self, voice_items: list):
+    def _update_voice_list(self, voice_items: list, show_warnings: bool = True):
         """Cập nhật combobox với danh sách giọng mới (list of (label, voice_id))"""
         if not voice_items:
             self.btn_load_voices.configure(state="normal", text="↺ Tải giọng")
             # OmniVoice empty result → hint user check voice_kind (preset vs clone)
-            if self.engine_var.get() == "omnivoice":
+            # Chỉ hiện khi user chủ động (click "Tải giọng"/đổi ngôn ngữ), không hiện lúc auto-load mở app
+            if show_warnings and self.engine_var.get() == "omnivoice":
                 _kind = self._omni_kind_var.get() or "preset"
                 _other = "clone" if _kind == "preset" else "preset"
                 messagebox.showwarning(
