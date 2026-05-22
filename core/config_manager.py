@@ -9,7 +9,7 @@ from typing import Any, Optional
 BASE_DIR = Path(__file__).parent.parent
 
 DEFAULT_CONFIG: dict = {
-    "tts_engine": "edge",          # "edge" | "azure" | "google"
+    "tts_engine": "edge",          # "edge" | "google" | "omnivoice"
     "voice_id": "vi-VN-HoaiMyNeural",
     "speed": "+0%",                 # Edge TTS rate: "-50%" → "+100%"
     "volume": "+0%",                # Edge TTS volume
@@ -17,12 +17,6 @@ DEFAULT_CONFIG: dict = {
     "output_format": "mp3",        # mp3 | wav
     "output_dir": "",
     "theme": "dark",               # dark | light | system
-    # Microsoft Azure Cognitive Services TTS credentials (tuỳ chọn)
-    "azure_credentials": {
-        "subscription_key": "",
-        "region": "eastasia",   # VD: eastasia, southeastasia, eastus, westeurope
-        "style": "",           # VD: newscast, cheerful, sad, angry (nếu giọng hỗ trợ)
-    },
     # OmniVoice Colab credentials (tuỳ chọn) — Voice Library server trên Colab
     "omnivoice_credentials": {
         "endpoint": "",           # URL ngrok (1 hoặc nhiều, mỗi dòng 1 URL)
@@ -118,17 +112,6 @@ class ConfigManager:
 
     def set_google_creds(self, creds: dict) -> None:
         self._data["google_credentials"] = creds
-
-    def get_azure_creds(self) -> Optional[dict]:
-        creds = self._data.get("azure_credentials", {})
-        if creds.get("subscription_key") and creds.get("region"):
-            return dict(creds)
-        return None
-
-    def set_azure_creds(self, subscription_key: str, region: str, style: str = "") -> None:
-        self._data.setdefault("azure_credentials", {})["subscription_key"] = subscription_key
-        self._data["azure_credentials"]["region"] = region
-        self._data["azure_credentials"]["style"] = style
 
     def get_omnivoice_creds(self) -> Optional[dict]:
         creds = self._data.get("omnivoice_credentials", {})

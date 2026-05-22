@@ -45,16 +45,12 @@ class SettingsTab(ctk.CTkFrame):
             eng_row, text="Edge TTS (Miễn phí)", variable=self.engine_var, value="edge"
         ).grid(row=0, column=1, padx=8)
         ctk.CTkRadioButton(
-            eng_row, text="🇲🇸 Microsoft Azure TTS", variable=self.engine_var, value="azure",
-            fg_color="#0078d4", hover_color="#005a9e",
-        ).grid(row=0, column=2, padx=8)
-        ctk.CTkRadioButton(
             eng_row, text="Google Cloud TTS", variable=self.engine_var, value="google"
-        ).grid(row=0, column=3, padx=8)
+        ).grid(row=0, column=2, padx=8)
         ctk.CTkRadioButton(
             eng_row, text="🎭 OmniVoice (Colab)", variable=self.engine_var, value="omnivoice",
             fg_color="#7c3aed", hover_color="#5b21b6",
-        ).grid(row=0, column=4, padx=8)
+        ).grid(row=0, column=3, padx=8)
 
         # ── Voice & Speed ─────────────────────────────────────────────────
         self._section(scroll, "🎙 Giọng đọc & Tốc độ")
@@ -153,41 +149,6 @@ class SettingsTab(ctk.CTkFrame):
                 th, text=t.capitalize(), variable=self.theme_var, value=t,
                 command=self._apply_theme,
             ).grid(row=0, column=i + 1, padx=8)
-        # ── Azure Credentials ─────────────────────────────────────────────────
-        self._section(scroll, "🇲🇸 Microsoft Azure TTS Credentials")
-
-        az = ctk.CTkFrame(scroll, fg_color="transparent")
-        az.pack(fill="x", padx=8, pady=4)
-
-        ctk.CTkLabel(az, text="Subscription Key:", width=140, anchor="w").grid(row=0, column=0, sticky="w", pady=3)
-        self._azure_key_entry = ctk.CTkEntry(az, width=320, placeholder_text="Nhập Azure Speech subscription key")
-        self._azure_key_entry.grid(row=0, column=1, sticky="w", padx=4)
-        az_key = (self.config.get("azure_credentials") or {}).get("subscription_key", "")
-        if az_key:
-            self._azure_key_entry.insert(0, az_key)
-
-        ctk.CTkLabel(az, text="Region:", width=140, anchor="w").grid(row=1, column=0, sticky="w", pady=3)
-        self._azure_region_entry = ctk.CTkEntry(az, width=200, placeholder_text="VD: eastasia, eastus, westeurope")
-        self._azure_region_entry.grid(row=1, column=1, sticky="w", padx=4)
-        az_region = (self.config.get("azure_credentials") or {}).get("region", "eastasia")
-        self._azure_region_entry.insert(0, az_region)
-
-        ctk.CTkLabel(az, text="Voice Style:", width=140, anchor="w").grid(row=2, column=0, sticky="w", pady=3)
-        az_styles = ["", "newscast", "cheerful", "empathetic", "sad", "angry",
-                     "excited", "friendly", "hopeful", "shouting", "whispering"]
-        self._azure_style_var = ctk.StringVar(
-            value=(self.config.get("azure_credentials") or {}).get("style", "")
-        )
-        style_menu = ctk.CTkOptionMenu(
-            az, values=az_styles, variable=self._azure_style_var, width=200
-        )
-        style_menu.grid(row=2, column=1, sticky="w", padx=4)
-
-        ctk.CTkLabel(
-            az,
-            text="ℹ️ Tạo key miễn phí tại portal.azure.com → Cognitive Services → Speech",
-            text_color="gray", font=("Segoe UI", 11),
-        ).grid(row=3, column=0, columnspan=2, sticky="w", padx=4, pady=(2, 6))
         # ── OmniVoice Credentials ─────────────────────────────────────────
         self._section(scroll, "🎭 OmniVoice (Colab) Credentials")
 
@@ -521,14 +482,6 @@ class SettingsTab(ctk.CTkFrame):
         # Engine & theme
         self.config.set("tts_engine", self.engine_var.get())
         self.config.set("theme", self.theme_var.get())
-
-        # Azure credentials
-        az_key    = self._azure_key_entry.get().strip()
-        az_region = self._azure_region_entry.get().strip() or "eastasia"
-        az_style  = self._azure_style_var.get()
-        self.config.set_azure_creds(az_key, az_region, az_style)
-        if az_key:
-            self._azure_key_entry.configure(placeholder_text="✓ Đã lưu")
 
         # OmniVoice credentials
         omni_endpoint = self._omni_endpoint_box.get("1.0", "end").strip()

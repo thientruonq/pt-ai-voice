@@ -27,7 +27,6 @@ a = Analysis(
         'edge_tts',
         'edge_tts.communicate',
         'edge_tts.list_voices',
-        'azure.cognitiveservices.speech',
         'tkinter',
         'tkinter.filedialog',
         'tkinter.messagebox',

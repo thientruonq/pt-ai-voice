@@ -7,11 +7,6 @@
   "output_format": "mp3",
   "output_dir": "",
   "theme": "dark",
-  "azure_credentials": {
-    "subscription_key": "",
-    "region": "eastasia",
-    "style": ""
-  },
   "omnivoice_credentials": {
     "endpoint": "",
     "voice_kind": "clone"

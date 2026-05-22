@@ -1,5 +1,5 @@
 """
-TTS Engine — Hỗ trợ Edge TTS (miễn phí), Microsoft Azure Cognitive Services TTS, và Google Cloud TTS
+TTS Engine — Hỗ trợ Edge TTS (miễn phí), Google Cloud TTS và OmniVoice (Colab)
 Cross-platform: Windows & macOS
 """
 import asyncio
@@ -183,164 +183,6 @@ class EdgeTTSEngine(TTSEngine):
             return []
 
 
-# ── Microsoft Azure Cognitive Services TTS ───────────────────────────────────
-
-class AzureTTSEngine(TTSEngine):
-    """
-    Microsoft Azure Cognitive Services Text-to-Speech (chính thức).
-    Cần Azure subscription key + service region.
-    Hỗ trợ 400+ giọng Neural, SSML, voice styles (newscast, cheerful, v.v.)
-    Cài thư viện: pip install azure-cognitiveservices-speech
-    """
-
-    # Danh sách style phổ biến cho giọng vi-VN
-    COMMON_STYLES = [
-        "", "newscast", "cheerful", "empathetic", "sad", "angry",
-        "excited", "friendly", "hopeful", "shouting", "whispering",
-        "terrified", "unfriendly",
-    ]
-
-    def __init__(
-        self,
-        subscription_key: str,
-        region: str = "eastasia",
-        voice: str = "vi-VN-HoaiMyNeural",
-        rate: str = "+0%",
-        volume: str = "+0%",
-        pitch: str = "+0Hz",
-        style: str = "",
-        output_format: str = "mp3",
-    ):
-        self.subscription_key = subscription_key
-        self.region = region
-        self.voice = voice
-        self.rate = rate
-        self.volume = volume
-        self.pitch = pitch
-        self.style = style
-        self.output_format = output_format
-
-    def _build_ssml(
-        self, text: str, voice: str, rate: str, volume: str, pitch: str, style: str
-    ) -> str:
-        """Tạo SSML với đầy đủ prosody + style (nếu có)."""
-        lang = "-".join(voice.split("-")[:2]) if "-" in voice else "vi-VN"
-        inner = text
-
-        if style:
-            inner = (
-                f'<mstts:express-as style="{style}">{text}</mstts:express-as>'
-            )
-
-        return (
-            f"<speak version='1.0' "
-            f"xmlns='http://www.w3.org/2001/10/synthesis' "
-            f"xmlns:mstts='http://www.w3.org/2001/mstts' "
-            f"xml:lang='{lang}'>"
-            f"<voice name='{voice}'>"
-            f"<prosody rate='{rate}' volume='{volume}' pitch='{pitch}'>"
-            f"{inner}"
-            f"</prosody></voice></speak>"
-        )
-
-    def _get_output_format(self):
-        """Trả về SpeechSynthesisOutputFormat phù hợp."""
-        try:
-            import azure.cognitiveservices.speech as speechsdk  # type: ignore
-
-            fmt_map = {
-                "mp3": speechsdk.SpeechSynthesisOutputFormat.Audio24Khz160KBitRateMonoMp3,
-                "wav": speechsdk.SpeechSynthesisOutputFormat.Riff24Khz16BitMonoPcm,
-            }
-            return fmt_map.get(self.output_format,
-                               speechsdk.SpeechSynthesisOutputFormat.Audio24Khz160KBitRateMonoMp3)
-        except Exception:
-            return None
-
-    def synthesize(self, text: str, output_path: str, **kwargs) -> bool:
-        try:
-            import azure.cognitiveservices.speech as speechsdk  # type: ignore
-
-            voice  = kwargs.get("voice",  self.voice)
-            rate   = kwargs.get("rate",   self.rate)
-            volume = kwargs.get("volume", self.volume)
-            pitch  = kwargs.get("pitch",  self.pitch)
-            style  = kwargs.get("style",  self.style)
-
-            speech_config = speechsdk.SpeechConfig(
-                subscription=self.subscription_key,
-                region=self.region,
-            )
-            fmt = self._get_output_format()
-            if fmt:
-                speech_config.set_speech_synthesis_output_format(fmt)
-
-            audio_config = speechsdk.audio.AudioOutputConfig(filename=output_path)
-            synthesizer  = speechsdk.SpeechSynthesizer(
-                speech_config=speech_config,
-                audio_config=audio_config,
-            )
-
-            ssml   = self._build_ssml(text, voice, rate, volume, pitch, style)
-            result = synthesizer.speak_ssml_async(ssml).get()
-
-            if result.reason == speechsdk.ResultReason.SynthesizingAudioCompleted:
-                return Path(output_path).exists()
-
-            cancel = result.cancellation_details
-            print(f"[AzureTTS] Lỗi tổng hợp: {cancel.reason} — {cancel.error_details}")
-            return False
-
-        except ImportError:
-            print("[AzureTTS] Chưa cài azure-cognitiveservices-speech. Chạy: pip install azure-cognitiveservices-speech")
-            return False
-        except Exception as e:
-            print(f"[AzureTTS] Lỗi: {e}")
-            return False
-
-    def list_voices(self, lang_filter: str = "") -> List[dict]:
-        try:
-            import azure.cognitiveservices.speech as speechsdk  # type: ignore
-
-            speech_config = speechsdk.SpeechConfig(
-                subscription=self.subscription_key,
-                region=self.region,
-            )
-            synthesizer = speechsdk.SpeechSynthesizer(
-                speech_config=speech_config,
-                audio_config=None,
-            )
-            result = synthesizer.get_voices_async(lang_filter or "").get()
-
-            voices = []
-            for v in result.voices:
-                gender_str = ""
-                try:
-                    gender_str = v.gender.name
-                except Exception:
-                    gender_str = str(v.gender)
-
-                voices.append({
-                    "name":          v.short_name,
-                    "locale":        v.locale,
-                    "gender":        gender_str,
-                    "friendly_name": getattr(v, "local_name", v.short_name) or v.short_name,
-                    "styles":        list(v.style_list) if getattr(v, "style_list", None) else [],
-                })
-
-            if lang_filter:
-                voices = [x for x in voices if lang_filter.lower() in x["locale"].lower()]
-            return sorted(voices, key=lambda x: x["locale"])
-
-        except ImportError:
-            print("[AzureTTS] Chưa cài azure-cognitiveservices-speech.")
-            return []
-        except Exception as e:
-            print(f"[AzureTTS] list_voices lỗi: {e}")
-            return []
-
-
-
 class GoogleTTSEngine(TTSEngine):
     """
     Google Cloud Text-to-Speech.
@@ -440,7 +282,7 @@ def create_engine(config) -> TTSEngine:
     """
     Factory: tạo engine phù hợp từ ConfigManager.
     config: instance của ConfigManager
-    Hỗ trợ: "edge" | "azure" | "google" | "omnivoice"
+    Hỗ trợ: "edge" | "google" | "omnivoice"
     """
     engine_type = config.get("tts_engine", "edge")
 
@@ -456,24 +298,6 @@ def create_engine(config) -> TTSEngine:
                 endpoint=creds.get("endpoint", ""),
                 voice_kind=creds.get("voice_kind", "preset"),
                 voice_id=config.get("voice_id", ""),
-            )
-
-    # ── Microsoft Azure Cognitive Services TTS ────────────────────────────
-    if engine_type == "azure":
-        creds = config.get_azure_creds()
-        if not creds or not creds.get("subscription_key"):
-            print("[Engine] Azure credentials không hợp lệ, fallback sang Edge TTS")
-            engine_type = "edge"
-        else:
-            return AzureTTSEngine(
-                subscription_key=creds["subscription_key"],
-                region=creds.get("region", "eastasia"),
-                voice=config.get("voice_id", "vi-VN-HoaiMyNeural"),
-                rate=config.get("speed", "+0%"),
-                volume=config.get("volume", "+0%"),
-                pitch=config.get("pitch", "+0Hz"),
-                style=creds.get("style", ""),
-                output_format=config.get("output_format", "mp3"),
             )
 
     # ── Google Cloud TTS ──────────────────────────────────────────────────

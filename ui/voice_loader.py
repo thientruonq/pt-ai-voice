@@ -3,7 +3,7 @@ Voice loader helper — dùng chung cho cả 3 tab (Settings/SRT/Text).
 
 Tải danh sách giọng theo engine hiện tại trong config:
   - "omnivoice" → query OmniVoice server, filter theo voice_kind (preset/clone)
-  - khác (edge/azure/google) → Edge list_voices() filter theo language code
+  - khác (edge/google) → Edge list_voices() filter theo language code
 
 Return: list[(label_to_display, voice_id_for_synth)]
 """
@@ -35,8 +35,8 @@ def load_voices_for_config(config, lang_code: str = "vi-VN") -> List[Tuple[str, 
     """Tải voices theo engine config. Trả list[(label, voice_id)] đã sort.
 
     OmniVoice: filter theo voice_kind đã chọn trong Settings.
-    Edge/Azure/Google: filter theo lang_code (Edge API cho cả 3 vì list_voices của Edge
-    bao trùm các locale chuẩn — engine SaaS khác cũng dùng cùng voice naming).
+    Edge/Google: filter theo lang_code (Edge API dùng cho cả 2 vì list_voices của Edge
+    bao trùm các locale chuẩn — Google cũng dùng cùng voice naming convention).
     """
     engine_type = config.get("tts_engine", "edge")
 
@@ -70,7 +70,7 @@ def load_voices_for_config(config, lang_code: str = "vi-VN") -> List[Tuple[str, 
             print(f"[VoiceLoader] OmniVoice load fail: {e}")
             return []
 
-    # Default path: Edge TTS list (cả Azure/Google cũng dùng được — naming chuẩn locale)
+    # Default path: Edge TTS list (Google cũng dùng được — naming chuẩn locale)
     try:
         from core.tts_engine import EdgeTTSEngine
         engine = EdgeTTSEngine()
