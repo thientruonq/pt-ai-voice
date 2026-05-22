@@ -1,0 +1,16 @@
+# PT AI Voice — Dependencies
+# Install: pip install -r requirements.txt
+
+# ── Core ──────────────────────────────────────────────────────────────────────
+customtkinter>=5.2.2        # Modern cross-platform GUI
+edge-tts>=6.1.9             # Microsoft Edge TTS (miễn phí, 300+ giọng)
+certifi>=2024.2.2           # CA bundle cho HTTPS (fix ngrok fail trên Mac)
+
+# ── Microsoft Azure Cognitive Services TTS ────────────────────────────────────
+# Bỏ comment để cài Azure TTS (cần Azure subscription):
+azure-cognitiveservices-speech>=1.37.0
+
+# ── Optional: Google Cloud TTS ────────────────────────────────────────────────
+# Bỏ comment nếu dùng Google Cloud TTS:
+# google-cloud-texttospeech>=2.16.0
+# google-auth>=2.28.0

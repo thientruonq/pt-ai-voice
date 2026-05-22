@@ -1,0 +1,41 @@
+# Build / dist artifacts
+dist/
+build/
+*.spec.bak
+
+# Virtual env
+venv/
+.venv/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+.eggs/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs / temp
+*.log
+*.tmp
+.cache/
+
+# Secrets / local config
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+voice_config.json
+!voice_config.example.json
+
+# macOS app bundles produced by build
+*.app/
