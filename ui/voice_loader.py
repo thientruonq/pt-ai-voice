@@ -53,9 +53,17 @@ def load_voices_for_config(config, lang_code: str = "vi-VN") -> List[Tuple[str, 
             # nếu server chỉ có clones), filter client-side bằng _kind marker.
             kind_filter = creds.get("voice_kind", "preset")
             raw = engine.list_voices(kind="all")
+            # Map lang_code UI ("vi-VN", "en-US") → prefix ngắn ("vi", "en")
+            # để khớp với field "lang" trên voice dict của OmniVoice server.
+            short_lang = (lang_code.split("-")[0] if lang_code else "").lower()
             items: List[Tuple[str, str]] = []
             for v in raw:
                 if v.get("_kind") != kind_filter:
+                    continue
+                # Filter theo ngôn ngữ: nếu voice có tag "lang" thì phải khớp;
+                # voice không có tag (lang rỗng) vẫn được giữ để tránh ẩn nhầm.
+                _vlang = (v.get("lang") or "").lower()
+                if short_lang and _vlang and _vlang != short_lang:
                     continue
                 _id = v.get("id", "")
                 if not _id:
@@ -64,7 +72,8 @@ def load_voices_for_config(config, lang_code: str = "vi-VN") -> List[Tuple[str, 
             items.sort(key=lambda x: (0 if "♀" in x[0] else 1 if "♂" in x[0] else 2, x[0]))
             if not items:
                 print(f"[VoiceLoader] OmniVoice trả 0 voices cho kind='{kind_filter}' "
-                      f"(tổng raw: {len(raw)}) — thử switch voice_kind sang loại khác.")
+                      f"lang='{short_lang}' (tổng raw: {len(raw)}) — "
+                      f"thử switch voice_kind hoặc đổi ngôn ngữ.")
             return items
         except Exception as e:
             print(f"[VoiceLoader] OmniVoice load fail: {e}")
