@@ -28,6 +28,9 @@ desktop.ini
 *.tmp
 .cache/
 
+# Runtime cache (URL pool, failed endpoints, etc.)
+data/omnivoice_pool.json
+
 # Secrets / local config
 .env
 .env.*
