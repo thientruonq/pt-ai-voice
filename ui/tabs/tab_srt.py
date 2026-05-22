@@ -355,8 +355,8 @@ class SRTTab(ctk.CTkFrame):
                         time_range = f"{self._fmt_time(segs[0].start_ms)} --> {self._fmt_time(segs[-1].end_ms)}"
                     else:
                         time_range = "—"
-                    self.after(0, lambda _p=p, _n=n, _t=preview_text, _tr=time_range:
-                               self._update_batch_row(_p, content=f"[{_n} đoạn] {_t}", srt_goc=_tr))
+                    self.after(0, lambda _p=p, _t=preview_text, _tr=time_range:
+                               self._update_batch_row(_p, content=_t, srt_goc=_tr))
                 except Exception as e:
                     self.after(0, lambda _p=p, _e=str(e)[:40]:
                                self._update_batch_row(_p, content=f"❌ Lỗi parse: {_e}", status="error"))
