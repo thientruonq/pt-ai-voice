@@ -19,7 +19,7 @@ DEFAULT_CONFIG: dict = {
     "theme": "dark",               # dark | light | system
     # OmniVoice Colab credentials (tuỳ chọn) — Voice Library server trên Colab
     "omnivoice_credentials": {
-        "endpoint": "",           # URL ngrok (1 hoặc nhiều, mỗi dòng 1 URL)
+        "endpoint": "",           # URL public tunnel server (ngrok / Cloudflare / khác — mỗi dòng 1 URL)
         "voice_kind": "preset",   # "preset" | "clone"
     },
     # Google Cloud TTS credentials (tuỳ chọn)

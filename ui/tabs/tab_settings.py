@@ -183,7 +183,8 @@ class SettingsTab(ctk.CTkFrame):
 
         ctk.CTkLabel(
             ov,
-            text="ℹ️ Mở notebook tools/omnivoice-colab-server.ipynb trên Colab → Run all → paste URL ngrok\n"
+            text="ℹ️ Mở notebook tools/omnivoice-colab-server.ipynb trên Colab → Run all → paste URL tunnel\n"
+                 "Hỗ trợ ngrok, Cloudflare Tunnel (trycloudflare.com), LocalTunnel, ...\n"
                  "Nhiều URL: mỗi dòng 1 URL (pool tự rotate khi 1 URL fail).",
             text_color="gray", font=("Segoe UI", 11), justify="left",
         ).grid(row=2, column=0, columnspan=3, sticky="w", padx=4, pady=(2, 6))
@@ -342,7 +343,7 @@ class SettingsTab(ctk.CTkFrame):
                 self.btn_load_voices.configure(state="normal", text="↺ Tải giọng")
                 messagebox.showwarning(
                     "OmniVoice",
-                    "Chưa nhập Server URL — paste URL ngrok từ Colab notebook")
+                    "Chưa nhập Server URL — paste URL tunnel (ngrok/Cloudflare) từ Colab notebook")
                 return
             # Sync UI staging → config in-memory (Save mới persist xuống file)
             self.config.set("tts_engine", "omnivoice")

@@ -286,7 +286,7 @@ def create_engine(config) -> TTSEngine:
     """
     engine_type = config.get("tts_engine", "edge")
 
-    # ── OmniVoice Colab (k2-fsa, self-hosted qua ngrok) ───────────────────
+    # ── OmniVoice Colab (k2-fsa, self-hosted qua ngrok/Cloudflare tunnel) ─
     if engine_type == "omnivoice":
         creds = config.get_omnivoice_creds()
         if not creds:

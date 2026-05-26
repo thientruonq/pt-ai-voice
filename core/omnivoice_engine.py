@@ -7,9 +7,11 @@ Server (tools/omnivoice-colab-server.ipynb ở Auto-YTB) giữ 2 thư mục:
 
 Client gửi (voice_kind, voice_id) — server tra library → synthesize.
 
-Multi-URL pool: user có thể nhập nhiều URL ngrok (newline-separated)
-→ pool tự xoay vòng khi 1 URL fail (Colab disconnect / ngrok expire).
-Pool state persist xuống disk → recover qua app restart.
+Multi-URL pool: user có thể nhập nhiều URL public tunnel của server
+(newline-separated) — hỗ trợ ngrok, Cloudflare Tunnel (trycloudflare.com),
+LocalTunnel, hoặc bất kỳ HTTP(S) endpoint nào. Pool tự xoay vòng khi 1
+URL fail (Colab disconnect / tunnel expire). Pool state persist xuống
+disk → recover qua app restart.
 
 License: Apache 2.0 — commercial OK.
 """
@@ -83,7 +85,7 @@ def _normalize_allcaps_vi(text: str) -> str:
 
 
 def _build_ssl_context():
-    """SSL context dùng certifi bundle (fix HTTPS ngrok fail trên Mac)."""
+    """SSL context dùng certifi bundle (fix HTTPS tunnel fail trên Mac)."""
     try:
         import certifi
         return _ssl.create_default_context(cafile=certifi.where())
@@ -191,7 +193,10 @@ class OmniVoiceUrlPool:
 
     @staticmethod
     def _short_url(url: str) -> str:
-        """'https://clock-halt.ngrok-free.dev' → 'clock-halt'"""
+        """Lấy subdomain đầu để hiển thị log gọn.
+        VD: 'https://clock-halt.ngrok-free.dev' → 'clock-halt'
+            'https://norm-exhaust.trycloudflare.com' → 'norm-exhaust'
+        """
         if not url:
             return "?"
         s = str(url).replace("https://", "").replace("http://", "")
@@ -285,16 +290,21 @@ class OmniVoiceUrlPool:
 # ── Engine ──────────────────────────────────────────────────────────────────
 
 class OmniVoiceColabEngine(TTSEngine):
-    """TTS engine dùng OmniVoice Voice Library server trên Colab (qua ngrok).
+    """TTS engine dùng OmniVoice Voice Library server trên Colab.
+
+    Server expose qua public tunnel: ngrok, Cloudflare Tunnel
+    (trycloudflare.com), LocalTunnel, ... — client treat mọi URL đồng nhất.
 
     Args:
-        endpoint: URL ngrok (string newline/comma-separated, hoặc list[str])
+        endpoint: URL public tunnel (string newline/comma-separated, hoặc list[str])
         voice_kind: "preset" | "clone"
         voice_id: ID giọng trong library (slug folder)
         timeout: HTTP timeout giây
     """
 
-    _NGROK_HEADERS = {"ngrok-skip-browser-warning": "true"}
+    # Header `ngrok-skip-browser-warning` chỉ ngrok hiểu — Cloudflare/LocalTunnel
+    # bỏ qua nên gửi mọi request vẫn an toàn cross-provider.
+    _SERVER_HEADERS = {"ngrok-skip-browser-warning": "true"}
 
     def __init__(
         self,
@@ -352,7 +362,7 @@ class OmniVoiceColabEngine(TTSEngine):
         if not text or not text.strip():
             return False
         if not self._pool or len(self._pool) == 0:
-            print("[OmniVoice] Thiếu Server URL — setup Colab notebook + paste ngrok URL")
+            print("[OmniVoice] Thiếu Server URL — setup Colab notebook + paste URL tunnel (ngrok/Cloudflare)")
             return False
         if not self.voice_id:
             print("[OmniVoice] Thiếu voice_id — chọn giọng trong Settings")
@@ -389,7 +399,7 @@ class OmniVoiceColabEngine(TTSEngine):
                 req = urllib.request.Request(
                     f"{_current_url}/synthesize",
                     data=body,
-                    headers={"Content-Type": ctype, **self._NGROK_HEADERS},
+                    headers={"Content-Type": ctype, **self._SERVER_HEADERS},
                     method="POST",
                 )
                 with urllib.request.urlopen(req, timeout=self.timeout, context=_SSL_CTX) as resp:
@@ -414,10 +424,10 @@ class OmniVoiceColabEngine(TTSEngine):
                 if _is_server_fail and self._pool and _current_url:
                     self._pool.mark_failed(_current_url, f"HTTP {e.code}")
                 if e.code == 404:
-                    print(f"[OmniVoice] ❌ HTTP 404 — URL ngrok HẾT HẠN: {_current_url}")
-                    print(f"[OmniVoice]    ➜ Vào Colab notebook chạy lại, paste URL ngrok mới.")
+                    print(f"[OmniVoice] ❌ HTTP 404 — URL tunnel HẾT HẠN hoặc sai endpoint: {_current_url}")
+                    print(f"[OmniVoice]    ➜ Vào Colab notebook chạy lại, paste URL tunnel mới.")
                 elif e.code == 502 and "ERR_NGROK_8012" in _detail:
-                    print(f"[OmniVoice] ❌ HTTP 502 — Ngrok OK nhưng Colab ĐÃ TẮT: {_current_url}")
+                    print(f"[OmniVoice] ❌ HTTP 502 — Tunnel OK nhưng Colab ĐÃ TẮT: {_current_url}")
                     print(f"[OmniVoice]    ➜ Restart Colab notebook (Runtime → Restart).")
                 elif e.code in (502, 503, 504):
                     print(f"[OmniVoice] ❌ HTTP {e.code} — Server quá tải: {_current_url}")
@@ -472,7 +482,7 @@ class OmniVoiceColabEngine(TTSEngine):
             try:
                 req = urllib.request.Request(
                     f"{_url}/voices?{qs}",
-                    headers=self._NGROK_HEADERS,
+                    headers=self._SERVER_HEADERS,
                     method="GET",
                 )
                 with urllib.request.urlopen(req, timeout=10, context=_SSL_CTX) as resp:
@@ -536,7 +546,7 @@ class OmniVoiceColabEngine(TTSEngine):
             try:
                 req = urllib.request.Request(
                     f"{_url}/health",
-                    headers=self._NGROK_HEADERS,
+                    headers=self._SERVER_HEADERS,
                     method="GET",
                 )
                 with urllib.request.urlopen(req, timeout=15, context=_SSL_CTX) as resp:
@@ -557,9 +567,9 @@ class OmniVoiceColabEngine(TTSEngine):
                 except Exception:
                     pass
                 if e.code == 502 and "ERR_NGROK_8012" in _body:
-                    _last_err = f"{_url}: Ngrok OK nhưng Colab tắt"
+                    _last_err = f"{_url}: Tunnel OK nhưng Colab tắt"
                 elif e.code == 404:
-                    _last_err = f"{_url}: URL ngrok hết hạn (404)"
+                    _last_err = f"{_url}: URL tunnel hết hạn hoặc sai endpoint (404)"
                 else:
                     _last_err = f"{_url}: HTTP {e.code}"
                 if self._is_url_failure(e):
