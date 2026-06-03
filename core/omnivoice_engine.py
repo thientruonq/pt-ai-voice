@@ -1,17 +1,17 @@
 """
 OmniVoice Colab Engine — HTTP client cho server Voice Library trên Google Colab.
 
-Server (tools/omnivoice-colab-server.ipynb ở Auto-YTB) giữ 2 thư mục:
+Server (notebook OmniVoice-Colab-Server) giữ 2 thư mục:
   - presets/ — giọng mẫu (read-only)
-  - clones/  — giọng user upload qua Auto-YTB (persist trên Drive)
+  - clones/  — giọng user upload (persist trên Google Drive)
 
 Client gửi (voice_kind, voice_id) — server tra library → synthesize.
 
-Multi-URL pool: user có thể nhập nhiều URL public tunnel của server
-(newline-separated) — hỗ trợ ngrok, Cloudflare Tunnel (trycloudflare.com),
-LocalTunnel, hoặc bất kỳ HTTP(S) endpoint nào. Pool tự xoay vòng khi 1
-URL fail (Colab disconnect / tunnel expire). Pool state persist xuống
-disk → recover qua app restart.
+Tunnel: notebook hiện dùng Cloudflare Quick Tunnel (URL dạng
+*.trycloudflare.com, KHÔNG cần auth token, không rate limit). Client
+chấp nhận thêm ngrok / LocalTunnel / bất kỳ HTTP(S) endpoint nào — multi-URL
+pool (newline-separated) tự xoay vòng khi 1 URL fail (Colab disconnect
+/ tunnel expire). Pool state persist xuống disk → recover qua app restart.
 
 License: Apache 2.0 — commercial OK.
 """
@@ -292,8 +292,9 @@ class OmniVoiceUrlPool:
 class OmniVoiceColabEngine(TTSEngine):
     """TTS engine dùng OmniVoice Voice Library server trên Colab.
 
-    Server expose qua public tunnel: ngrok, Cloudflare Tunnel
-    (trycloudflare.com), LocalTunnel, ... — client treat mọi URL đồng nhất.
+    Server expose qua public tunnel — khuyên dùng Cloudflare Quick Tunnel
+    (URL *.trycloudflare.com, không cần token). Cũng chấp nhận ngrok /
+    LocalTunnel / endpoint HTTP(S) bất kỳ — client treat mọi URL đồng nhất.
 
     Args:
         endpoint: URL public tunnel (string newline/comma-separated, hoặc list[str])
@@ -362,7 +363,7 @@ class OmniVoiceColabEngine(TTSEngine):
         if not text or not text.strip():
             return False
         if not self._pool or len(self._pool) == 0:
-            print("[OmniVoice] Thiếu Server URL — setup Colab notebook + paste URL tunnel (ngrok/Cloudflare)")
+            print("[OmniVoice] Thiếu Server URL — chạy Colab notebook + paste URL Cloudflare tunnel (*.trycloudflare.com)")
             return False
         if not self.voice_id:
             print("[OmniVoice] Thiếu voice_id — chọn giọng trong Settings")
