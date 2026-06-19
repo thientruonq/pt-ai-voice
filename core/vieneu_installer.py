@@ -43,41 +43,82 @@ _SUBPROCESS_FLAGS = 0x08000000 if _IS_WIN else 0  # CREATE_NO_WINDOW
 #  ONNX chạy CPU tốt hơn v2/neucodec nên dùng luôn default.)
 DEFAULT_MODEL = ""
 
-# Tên app cho thư mục local (đổi cho từng project).
-_APP_NAME = "PT-AI-Voice"
+# Tên app "của mình" (nơi cài MỚI) + danh sách tên fallback để DISCOVER install
+# có sẵn từ tool khác (cùng máy). Thứ tự = thứ tự ưu tiên.
+_OWN_APP_NAME = "PT-AI-Voice"
+_SIBLING_APP_NAMES = ["AutoYTB"]  # share runtime + clones với Auto-YTB nếu có
 
 
 # ── Paths ───────────────────────────────────────────────────────────────
 # CỐ TÌNH dùng %LOCALAPPDATA% / Application Support — KHÔNG nằm OneDrive (tránh
-# sync vài GB venv = thảm hoạ). VieNeu lưu HOÀN TOÀN local máy:
-#   Windows: %LOCALAPPDATA%\PT-AI-Voice
-#   macOS:   ~/Library/Application Support/PT-AI-Voice
-#   Linux:   $XDG_DATA_HOME/PT-AI-Voice hoặc ~/.local/share/PT-AI-Voice
+# sync vài GB venv = thảm hoạ). VieNeu lưu HOÀN TOÀN local máy.
+#
+# DISCOVERY: nếu thấy install hiện có ở Auto-YTB (cùng máy) → DÙNG CHUNG, không
+# bắt user cài lại 0.8GB. Tool nào cài trước thì các tool sau auto-detect path.
 
-def _local_base() -> Path:
-    """Base dir local (KHÔNG sync OneDrive/Drive). Tạo nếu chưa có."""
+def _base_for(app_name: str) -> Path:
+    """Path base local cho 1 app name cụ thể (KHÔNG tạo dir)."""
     if _IS_WIN:
         root = os.environ.get("LOCALAPPDATA", "") or str(Path.home() / "AppData" / "Local")
-        base = Path(root) / _APP_NAME
-    elif platform.system() == "Darwin":
-        base = Path.home() / "Library" / "Application Support" / _APP_NAME
-    else:
-        xdg = os.environ.get("XDG_DATA_HOME", "")
-        base = (Path(xdg) if xdg else Path.home() / ".local" / "share") / _APP_NAME
+        return Path(root) / app_name
+    if platform.system() == "Darwin":
+        return Path.home() / "Library" / "Application Support" / app_name
+    xdg = os.environ.get("XDG_DATA_HOME", "")
+    return (Path(xdg) if xdg else Path.home() / ".local" / "share") / app_name
+
+
+def _own_base() -> Path:
+    """Base dir của riêng PT-AI-Voice (cho install MỚI). Tạo nếu chưa có."""
+    base = _base_for(_OWN_APP_NAME)
     base.mkdir(parents=True, exist_ok=True)
     return base
 
 
+def _discover_existing_runtime() -> Optional[Path]:
+    """Tìm install VieNeu có sẵn (own → siblings). Trả None nếu chưa có."""
+    for name in [_OWN_APP_NAME] + _SIBLING_APP_NAMES:
+        cand = _base_for(name) / "vieneu"
+        marker = cand / ".installed"
+        py = (cand / "venv" / "Scripts" / "python.exe") if _IS_WIN else (cand / "venv" / "bin" / "python")
+        if marker.exists() and py.exists():
+            return cand
+    return None
+
+
+def _discover_existing_clones() -> Optional[Path]:
+    """Tìm clones dir có sẵn (own → siblings). Trả None nếu chưa có."""
+    for name in [_OWN_APP_NAME] + _SIBLING_APP_NAMES:
+        cand = _base_for(name) / "vieneu_clones"
+        if cand.exists() and any(cand.iterdir()):
+            return cand
+    return None
+
+
+def _local_base() -> Path:
+    """Deprecated alias — giữ cho code cũ nếu có. Dùng _own_base()."""
+    return _own_base()
+
+
 def vieneu_dir() -> Path:
-    """Runtime dir (uv + venv + marker), LOCAL. 'Gỡ VieNeu' xoá thư mục này."""
-    d = _local_base() / "vieneu"
+    """Runtime dir VieNeu (uv + venv + marker), LOCAL.
+
+    Nếu thấy install có sẵn (Auto-YTB hoặc PT-AI-Voice cũ) → trả path đó.
+    Else tạo + trả path PT-AI-Voice (cho install mới).
+    """
+    existing = _discover_existing_runtime()
+    if existing is not None:
+        return existing
+    d = _own_base() / "vieneu"
     d.mkdir(parents=True, exist_ok=True)
     return d
 
 
 def clones_dir() -> Path:
-    """Giọng clone, LOCAL — TÁCH khỏi runtime, không bị xoá khi Gỡ."""
-    d = _local_base() / "vieneu_clones"
+    """Giọng clone, LOCAL — share với app cùng máy nếu có sẵn."""
+    existing = _discover_existing_clones()
+    if existing is not None:
+        return existing
+    d = _own_base() / "vieneu_clones"
     d.mkdir(parents=True, exist_ok=True)
     return d
 
@@ -381,11 +422,27 @@ def install_async(progress_cb: ProgressCb,
     return t
 
 
+def is_shared_install() -> bool:
+    """True nếu runtime hiện đang dùng nằm ở app KHÁC (vd Auto-YTB), không phải
+    của PT-AI-Voice. Dùng để cảnh báo trước khi user Gỡ — tránh xóa nhầm install
+    chung mà tool khác đang dùng."""
+    own_runtime = _own_base() / "vieneu"
+    return vieneu_dir() != own_runtime
+
+
 def uninstall() -> bool:
-    """Xoá runtime data/vieneu (uv + venv + model marker). GIỮ giọng clone."""
+    """Xoá runtime VieNeu (uv + venv + model marker). GIỮ giọng clone.
+
+    Chỉ xóa nếu runtime nằm dưới base của PT-AI-Voice. Nếu runtime đang share
+    với app khác (Auto-YTB) → refuse và return False (UI nên hỏi
+    is_shared_install() trước để cảnh báo user).
+    """
+    if is_shared_install():
+        return False
     try:
-        if vieneu_dir().exists():
-            shutil.rmtree(vieneu_dir(), ignore_errors=True)
-        return not vieneu_dir().exists()
+        d = vieneu_dir()
+        if d.exists():
+            shutil.rmtree(d, ignore_errors=True)
+        return not d.exists()
     except Exception:
         return False

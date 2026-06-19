@@ -606,8 +606,16 @@ class SettingsTab(ctk.CTkFrame):
         self._vieneu_center_popup(dlg)
 
     def _vieneu_uninstall(self):
-        """Confirm + gỡ runtime VieNeu (giữ giọng clone)."""
+        """Confirm + gỡ runtime VieNeu (giữ giọng clone). Nếu install share với
+        app khác (Auto-YTB) → từ chối, bảo user gỡ ở tool đó."""
         from core import vieneu_installer as _inst
+        if _inst.is_shared_install():
+            messagebox.showinfo(
+                "VieNeu — Install dùng chung",
+                "Runtime VieNeu hiện đang dùng chung với tool khác (Auto-YTB).\n\n"
+                "Để tiết kiệm ~0.8GB đĩa, PT-AI-Voice tự dùng lại install có sẵn.\n"
+                "Muốn gỡ → vào Auto-YTB → Settings → Gỡ VieNeu.")
+            return
         if not messagebox.askyesno(
                 "Gỡ VieNeu",
                 "Gỡ runtime VieNeu (giải phóng ổ đĩa)?\n"
