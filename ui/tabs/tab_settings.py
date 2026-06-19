@@ -2,7 +2,10 @@
 Tab Cài đặt — Cấu hình engine, credentials, advanced options
 """
 import os
+import platform
+import subprocess
 import sys
+import threading
 from pathlib import Path
 import customtkinter as ctk
 from tkinter import filedialog, messagebox
@@ -25,6 +28,8 @@ class SettingsTab(ctk.CTkFrame):
         self.restart_cb = restart_cb
         self.status_cb = status_cb
         self._build_ui()
+        # Hide/show VieNeu buttons + ẩn sliders nếu engine = vieneu
+        self.after(100, self._refresh_engine_specific_ui)
         # Tự động tải giọng sau khi UI dựng xong (silent: bỏ qua cảnh báo OmniVoice rỗng)
         self.after(300, lambda: self._load_voices(show_warnings=False))
 
@@ -42,15 +47,37 @@ class SettingsTab(ctk.CTkFrame):
         self.engine_var = ctk.StringVar(value=self.config.get("tts_engine", "edge"))
         ctk.CTkLabel(eng_row, text="Engine:", width=120, anchor="w").grid(row=0, column=0)
         ctk.CTkRadioButton(
-            eng_row, text="Edge TTS (Miễn phí)", variable=self.engine_var, value="edge"
+            eng_row, text="Edge TTS (Miễn phí)", variable=self.engine_var, value="edge",
+            command=self._on_engine_change,
         ).grid(row=0, column=1, padx=8)
         ctk.CTkRadioButton(
-            eng_row, text="Google Cloud TTS", variable=self.engine_var, value="google"
+            eng_row, text="Google Cloud TTS", variable=self.engine_var, value="google",
+            command=self._on_engine_change,
         ).grid(row=0, column=2, padx=8)
         ctk.CTkRadioButton(
             eng_row, text="🎭 OmniVoice (Colab)", variable=self.engine_var, value="omnivoice",
             fg_color="#7c3aed", hover_color="#5b21b6",
+            command=self._on_engine_change,
         ).grid(row=0, column=3, padx=8)
+        ctk.CTkRadioButton(
+            eng_row, text="🇻🇳 VieNeu (Offline)", variable=self.engine_var, value="vieneu",
+            fg_color="#a855f7", hover_color="#9333ea",
+            command=self._on_engine_change,
+        ).grid(row=0, column=4, padx=8)
+
+        # VieNeu action buttons (Tạo giọng / Gỡ / chỉ báo CPU-GPU) — hide khi engine khác
+        self._vn_clone_btn = ctk.CTkButton(
+            eng_row, text="🎤 Tạo giọng", width=110, height=26,
+            command=self._vieneu_open_clone_dialog,
+            fg_color="#a855f7", hover_color="#9333ea", font=("Segoe UI", 11, "bold"),
+        )
+        self._vn_uninstall_btn = ctk.CTkButton(
+            eng_row, text="🗑 Gỡ VieNeu", width=110, height=26,
+            command=self._vieneu_uninstall,
+            fg_color="#dc2626", hover_color="#b91c1c", font=("Segoe UI", 11),
+        )
+        self._vn_hw_label = ctk.CTkLabel(eng_row, text="", font=("Segoe UI", 11),
+                                          text_color="#94a3b8")
 
         # ── Voice & Speed ─────────────────────────────────────────────────
         self._section(scroll, "🎙 Giọng đọc & Tốc độ")
@@ -272,8 +299,8 @@ class SettingsTab(ctk.CTkFrame):
 
         val_var = ctk.StringVar(value=self._fmt_slider(init_val, unit))
 
-        ctk.CTkLabel(parent, text=label, width=130, anchor="w").grid(
-            row=row, column=0, sticky="w", pady=4)
+        label_w = ctk.CTkLabel(parent, text=label, width=130, anchor="w")
+        label_w.grid(row=row, column=0, sticky="w", pady=4)
 
         slider = ctk.CTkSlider(
             parent, from_=from_, to=to,
@@ -286,12 +313,14 @@ class SettingsTab(ctk.CTkFrame):
         slider.set(init_val)
         slider.grid(row=row, column=1, sticky="w", padx=4)
 
-        ctk.CTkLabel(parent, textvariable=val_var, width=70, anchor="w").grid(
-            row=row, column=2, sticky="w", padx=(6, 0))
+        val_w = ctk.CTkLabel(parent, textvariable=val_var, width=70, anchor="w")
+        val_w.grid(row=row, column=2, sticky="w", padx=(6, 0))
 
         setattr(self, f"_slider_{key}", slider)
         setattr(self, f"_slider_{key}_unit", unit)
         setattr(self, f"_slider_{key}_step", step)
+        # Lưu widgets để hide/show theo engine (VieNeu không hỗ trợ slider)
+        setattr(self, f"_slider_{key}_widgets", (label_w, slider, val_w))
 
     @staticmethod
     def _fmt_slider(val: float, unit: str) -> str:
@@ -323,6 +352,282 @@ class SettingsTab(ctk.CTkFrame):
         short = "-".join(parts[2:]) if len(parts) > 2 else name_id
         short = short.replace("Neural", "").replace("neural", "").strip()
         return f"{gender_icon} {short}  ({locale})"
+
+    # ── VieNeu integration ──────────────────────────────────────────────────
+
+    def _on_engine_change(self):
+        """Khi user đổi engine: hiện/ẩn UI tuỳ engine + nếu chọn VieNeu chưa
+        cài thì mở dialog cài. Tự reload voices."""
+        engine = self.engine_var.get()
+        self._refresh_engine_specific_ui()
+        # Reload voices ngay với engine mới (silent: không phiền popup)
+        self._load_voices(show_warnings=False)
+        # VieNeu chưa cài → mở dialog cài luôn
+        if engine == "vieneu":
+            try:
+                from core import vieneu_installer as _inst
+                if not _inst.is_installed():
+                    self._vieneu_open_install_dialog()
+            except Exception as e:
+                print(f"[VieNeu] check install fail: {e}")
+
+    def _refresh_engine_specific_ui(self):
+        """Hide/show widgets theo engine hiện tại:
+        - VieNeu: ẩn sliders speed/volume/pitch (không hỗ trợ), hiện nút clone/uninstall
+        - Engine khác: ẩn nút VieNeu, hiện sliders."""
+        engine = self.engine_var.get()
+        is_vieneu = (engine == "vieneu")
+
+        # Sliders speed/volume/pitch — VieNeu không hỗ trợ
+        for key in ("speed", "volume", "pitch"):
+            ws = getattr(self, f"_slider_{key}_widgets", None)
+            if not ws:
+                continue
+            for w in ws:
+                try:
+                    if is_vieneu:
+                        w.grid_remove()
+                    else:
+                        w.grid()
+                except Exception:
+                    pass
+
+        # VieNeu action buttons
+        try:
+            from core import vieneu_installer as _inst
+            installed = _inst.is_installed()
+        except Exception:
+            installed = False
+        for w in (self._vn_clone_btn, self._vn_uninstall_btn, self._vn_hw_label):
+            try:
+                w.grid_forget()
+            except Exception:
+                pass
+        if is_vieneu and installed:
+            try:
+                from core import vieneu_installer as _inst
+                hw = _inst.installed_info().get("hardware", "cpu")
+                self._vn_hw_label.configure(
+                    text=("🖥️ GPU" if hw == "gpu" else "🖥️ CPU"))
+            except Exception:
+                pass
+            self._vn_clone_btn.grid(row=0, column=5, padx=(12, 4))
+            self._vn_uninstall_btn.grid(row=0, column=6, padx=4)
+            self._vn_hw_label.grid(row=0, column=7, padx=(8, 0))
+
+    def _vieneu_center_popup(self, popup):
+        """Đặt popup vào chính giữa app window."""
+        try:
+            popup.update_idletasks()
+            pw = popup.winfo_reqwidth() or popup.winfo_width()
+            ph = popup.winfo_reqheight() or popup.winfo_height()
+            root = self.winfo_toplevel()
+            ax, ay = root.winfo_x(), root.winfo_y()
+            aw, ah = root.winfo_width(), root.winfo_height()
+            if aw <= 1 or ah <= 1:
+                aw, ah = popup.winfo_screenwidth(), popup.winfo_screenheight()
+                ax = ay = 0
+            x = max(0, ax + (aw - pw) // 2)
+            y = max(0, ay + (ah - ph) // 2)
+            popup.geometry(f"+{x}+{y}")
+        except Exception:
+            pass
+        try:
+            popup.deiconify()
+            popup.lift()
+            popup.focus_force()
+        except Exception:
+            pass
+
+    def _vieneu_open_install_dialog(self):
+        """Dialog auto-tải VieNeu (uv → venv → vieneu[gpu|cpu] → model)."""
+        from core import vieneu_installer as _inst
+        hw = _inst.detect_hardware()
+        size = "~3-5GB" if hw == "gpu" else "~0.8GB"
+
+        popup = ctk.CTkToplevel(self)
+        popup.withdraw()
+        popup.title("Cài VieNeu-TTS")
+        popup.transient(self.winfo_toplevel())
+        popup.resizable(False, False)
+        try:
+            popup.grab_set()
+        except Exception:
+            pass
+
+        ctk.CTkLabel(popup, text="Cài VieNeu-TTS (giọng đọc tiếng Việt local)",
+                     font=("Segoe UI", 14, "bold")).pack(padx=20, pady=(16, 6))
+        ctk.CTkLabel(
+            popup, justify="left", font=("Segoe UI", 12), text_color="#94a3b8",
+            text=(f"Phát hiện phần cứng: {'GPU NVIDIA (nhanh)' if hw == 'gpu' else 'CPU'}\n"
+                  f"Cần tải về {size} (1 lần, lưu local máy KHÔNG sync OneDrive).\n"
+                  "Chạy offline sau khi cài. Có thể Gỡ sau để giải phóng ổ."),
+        ).pack(padx=20, pady=(0, 10))
+
+        bar = ctk.CTkProgressBar(popup, width=440)
+        bar.set(0)
+        bar.pack(padx=20, pady=(0, 6))
+        status = ctk.CTkLabel(popup, text="", font=("Segoe UI", 11), text_color="#94a3b8",
+                              wraplength=440, justify="left")
+        status.pack(padx=20, pady=(0, 10))
+
+        cancel_event = threading.Event()
+        state = {"installing": False}
+
+        btn_row = ctk.CTkFrame(popup, fg_color="transparent")
+        btn_row.pack(padx=20, pady=(0, 16))
+
+        def _progress(stage, pct, msg):
+            def _ui():
+                try:
+                    if pct is not None:
+                        bar.set(max(0, min(100, pct)) / 100.0)
+                    status.configure(text=msg)
+                except Exception:
+                    pass
+            self.after(0, _ui)
+
+        def _on_done(ok, msg):
+            def _ui():
+                state["installing"] = False
+                try:
+                    if ok:
+                        bar.set(1.0)
+                        status.configure(text=f"✓ {msg}", text_color="#22c55e")
+                        try:
+                            self._load_voices(show_warnings=False)
+                            self._refresh_engine_specific_ui()
+                        except Exception:
+                            pass
+                        popup.after(800, popup.destroy)
+                    else:
+                        status.configure(text=f"✗ {msg}", text_color="#ef4444")
+                        start_btn.configure(state="normal", text="🔧 Thử lại")
+                        cancel_btn.configure(text="Đóng")
+                except Exception:
+                    pass
+            self.after(0, _ui)
+
+        def _start():
+            if state["installing"]:
+                return
+            state["installing"] = True
+            start_btn.configure(state="disabled", text="⏳ Đang cài…")
+            _inst.install_async(_progress, _on_done, cancel_event=cancel_event)
+
+        def _cancel():
+            if state["installing"]:
+                cancel_event.set()
+                cancel_btn.configure(text="⏳ Đang dừng…", state="disabled")
+            else:
+                try:
+                    popup.destroy()
+                except Exception:
+                    pass
+
+        start_btn = ctk.CTkButton(btn_row, text="🔧 Bắt đầu cài", width=150, height=34,
+                                  fg_color="#16a34a", hover_color="#15803d",
+                                  font=("Segoe UI", 12, "bold"), command=_start)
+        start_btn.pack(side="left", padx=(0, 8))
+        cancel_btn = ctk.CTkButton(btn_row, text="Hủy", width=90, height=34,
+                                   fg_color="#475569", hover_color="#334155",
+                                   command=_cancel)
+        cancel_btn.pack(side="left")
+
+        self._vieneu_center_popup(popup)
+
+    def _vieneu_open_clone_dialog(self):
+        """Dialog tạo giọng clone từ file audio mẫu (3-5s)."""
+        from core import vieneu_installer as _inst
+        if not _inst.is_installed():
+            messagebox.showwarning(
+                "VieNeu chưa cài",
+                "Chọn engine VieNeu để mở dialog cài đặt.")
+            return
+
+        audio = filedialog.askopenfilename(
+            title="Chọn file giọng mẫu (3-5 giây)",
+            filetypes=[("Audio", "*.wav *.mp3 *.m4a *.flac *.ogg"),
+                       ("All", "*.*")])
+        if not audio:
+            return
+
+        dlg = ctk.CTkToplevel(self)
+        dlg.withdraw()
+        dlg.title("Tạo giọng clone")
+        dlg.transient(self.winfo_toplevel())
+        dlg.resizable(False, False)
+        try:
+            dlg.grab_set()
+        except Exception:
+            pass
+
+        ctk.CTkLabel(dlg, text="Tên giọng:", font=("Segoe UI", 12)).pack(
+            anchor="w", padx=20, pady=(16, 2))
+        name_e = ctk.CTkEntry(dlg, width=400, placeholder_text="VD: Giọng nữ trầm")
+        name_e.pack(padx=20)
+        ctk.CTkLabel(dlg, text="Lời thoại trong mẫu (tùy chọn — giúp clone chuẩn hơn):",
+                     font=("Segoe UI", 12)).pack(anchor="w", padx=20, pady=(10, 2))
+        tr_e = ctk.CTkEntry(dlg, width=400, placeholder_text="Nội dung audio mẫu nói gì…")
+        tr_e.pack(padx=20)
+        msg = ctk.CTkLabel(dlg, text="", font=("Segoe UI", 11), text_color="#94a3b8")
+        msg.pack(padx=20, pady=(8, 0))
+
+        def _save():
+            name = name_e.get().strip()
+            if not name:
+                msg.configure(text="⚠️ Nhập tên giọng", text_color="#ef4444")
+                return
+            ffmpeg_path = self.config.get_adv("ffmpeg_path", "") or "ffmpeg"
+
+            def _work():
+                try:
+                    from core import vieneu_tts as _vt
+                    _vt.add_clone(name, audio, transcript=tr_e.get().strip(),
+                                  ffmpeg=ffmpeg_path)
+                    self.after(0, lambda: (
+                        messagebox.showinfo("VieNeu", f"✓ Đã tạo giọng: {name}"),
+                        self._load_voices(show_warnings=False),
+                        dlg.destroy()))
+                except Exception as e:
+                    err = str(e)[:120]
+                    self.after(0, lambda em=err: msg.configure(
+                        text=f"✗ Lỗi: {em}", text_color="#ef4444"))
+            msg.configure(text="⏳ Đang xử lý…", text_color="#94a3b8")
+            threading.Thread(target=_work, daemon=True).start()
+
+        bf = ctk.CTkFrame(dlg, fg_color="transparent")
+        bf.pack(padx=20, pady=16)
+        ctk.CTkButton(bf, text="✅ Lưu", width=120, command=_save,
+                      fg_color="#16a34a", hover_color="#15803d").pack(side="left", padx=(0, 8))
+        ctk.CTkButton(bf, text="Đóng", width=90, command=dlg.destroy,
+                      fg_color="#475569", hover_color="#334155").pack(side="left")
+
+        self._vieneu_center_popup(dlg)
+
+    def _vieneu_uninstall(self):
+        """Confirm + gỡ runtime VieNeu (giữ giọng clone)."""
+        from core import vieneu_installer as _inst
+        if not messagebox.askyesno(
+                "Gỡ VieNeu",
+                "Gỡ runtime VieNeu (giải phóng ổ đĩa)?\n"
+                "Giọng clone của bạn vẫn được GIỮ lại."):
+            return
+        try:
+            from core.vieneu_tts import stop_sidecar
+            stop_sidecar()
+        except Exception:
+            pass
+        ok = _inst.uninstall()
+        if ok:
+            messagebox.showinfo("VieNeu", "✓ Đã gỡ VieNeu")
+        else:
+            messagebox.showerror("VieNeu", "✗ Gỡ thất bại")
+        try:
+            self._refresh_engine_specific_ui()
+            self._load_voices(show_warnings=False)
+        except Exception:
+            pass
 
     def _load_voices(self, show_warnings: bool = True):
         """Tải danh sách giọng — dùng helper chung load_voices_for_config().

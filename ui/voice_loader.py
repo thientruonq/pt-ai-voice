@@ -2,6 +2,7 @@
 Voice loader helper — dùng chung cho cả 3 tab (Settings/SRT/Text).
 
 Tải danh sách giọng theo engine hiện tại trong config:
+  - "vieneu"    → giọng default + 10 preset + clone local (offline, không load model)
   - "omnivoice" → query OmniVoice server, filter theo voice_kind (preset/clone)
   - khác (edge/google) → Edge list_voices() filter theo language code
 
@@ -39,6 +40,22 @@ def load_voices_for_config(config, lang_code: str = "vi-VN") -> List[Tuple[str, 
     bao trùm các locale chuẩn — Google cũng dùng cùng voice naming convention).
     """
     engine_type = config.get("tts_engine", "edge")
+
+    if engine_type == "vieneu":
+        # VieNeu chỉ tiếng Việt — không filter theo lang_code (ép vi-VN)
+        try:
+            from core.vieneu_tts import VieNeuTTSEngine
+            engine = VieNeuTTSEngine()
+            raw = engine.list_voices()
+            # Format: [(display, voice_id)] — VieNeu đã trả name có icon ♀/♂/🎙/👤
+            items = [(v["name"], v["voice_id"]) for v in raw]
+            # Sort: default đầu → preset (🎙) → clone (👤)
+            items.sort(key=lambda x: (
+                0 if x[1] == "default" else 1 if "🎙" in x[0] else 2, x[0]))
+            return items
+        except Exception as e:
+            print(f"[VoiceLoader] VieNeu load fail: {e}")
+            return []
 
     if engine_type == "omnivoice":
         creds = config.get("omnivoice_credentials") or {}

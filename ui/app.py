@@ -112,5 +112,11 @@ class App(ctk.CTk):
         self.engine_badge.configure(text=f"  Engine: {engine}  ")
 
     def _on_close(self):
+        # Tắt sidecar VieNeu nếu đang chạy (process leak nếu skip)
+        try:
+            from core.vieneu_tts import stop_sidecar
+            stop_sidecar()
+        except Exception:
+            pass
         self.config.save()
         self.destroy()

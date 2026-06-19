@@ -1,5 +1,6 @@
 """
-TTS Engine — Hỗ trợ Edge TTS (miễn phí), Google Cloud TTS và OmniVoice (Colab)
+TTS Engine — Hỗ trợ Edge TTS (miễn phí), Google Cloud TTS, OmniVoice (Colab)
+và VieNeu (local Vietnamese TTS, offline sau khi cài).
 Cross-platform: Windows & macOS
 """
 import asyncio
@@ -282,9 +283,28 @@ def create_engine(config) -> TTSEngine:
     """
     Factory: tạo engine phù hợp từ ConfigManager.
     config: instance của ConfigManager
-    Hỗ trợ: "edge" | "google" | "omnivoice"
+    Hỗ trợ: "edge" | "google" | "omnivoice" | "vieneu"
     """
     engine_type = config.get("tts_engine", "edge")
+
+    # ── VieNeu (local Vietnamese TTS qua sidecar) ─────────────────────────
+    if engine_type == "vieneu":
+        from . import vieneu_installer as _vn_inst
+        if not _vn_inst.is_installed():
+            print("[Engine] VieNeu chưa cài, fallback sang Edge TTS")
+            engine_type = "edge"
+        else:
+            from .vieneu_tts import VieNeuTTSEngine
+            from .audio_processor import find_ffmpeg
+            try:
+                ffmpeg = find_ffmpeg(config.get_adv("ffmpeg_path", "")) or "ffmpeg"
+            except Exception:
+                ffmpeg = "ffmpeg"
+            return VieNeuTTSEngine(
+                voice_id=config.get("voice_id", ""),
+                model=config.get("vieneu_model", ""),
+                ffmpeg=ffmpeg,
+            )
 
     # ── OmniVoice Colab (k2-fsa, self-hosted qua ngrok/Cloudflare tunnel) ─
     if engine_type == "omnivoice":

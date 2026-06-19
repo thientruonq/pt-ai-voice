@@ -9,7 +9,7 @@ from typing import Any, Optional
 BASE_DIR = Path(__file__).parent.parent
 
 DEFAULT_CONFIG: dict = {
-    "tts_engine": "edge",          # "edge" | "google" | "omnivoice"
+    "tts_engine": "edge",          # "edge" | "google" | "omnivoice" | "vieneu"
     "voice_id": "vi-VN-HoaiMyNeural",
     "speed": "+0%",                 # Edge TTS rate: "-50%" → "+100%"
     "volume": "+0%",                # Edge TTS volume
@@ -17,6 +17,8 @@ DEFAULT_CONFIG: dict = {
     "output_format": "mp3",        # mp3 | wav
     "output_dir": "",
     "theme": "dark",               # dark | light | system
+    # VieNeu local TTS (tuỳ chọn) — "" = dùng default v3-Turbo của package
+    "vieneu_model": "",
     # OmniVoice Colab credentials (tuỳ chọn) — Voice Library server trên Colab
     "omnivoice_credentials": {
         "endpoint": "",           # URL public tunnel server (ngrok / Cloudflare / khác — mỗi dòng 1 URL)
