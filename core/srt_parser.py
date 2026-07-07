@@ -26,6 +26,45 @@ class Segment:
 _HTML_RE = re.compile(r"<[^>]+>")
 _MULTI_SPACE_RE = re.compile(r"\s+")
 _SPECIAL_RE = re.compile(r"[#@$%^&*~`|\\<>{}[\]]")
+# Split tại ranh giới câu — . ! ? theo sau bởi space (giữ delimiter với lookbehind)
+_SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?…])\s+")
+
+
+def split_long_text(text: str, max_chars: int) -> List[str]:
+    """Chia text dài thành list part <= max_chars, cắt tại ranh giới câu.
+
+    - Không cắt giữa câu nếu có thể tránh (gộp các câu cho vừa max_chars).
+    - Nếu 1 câu > max_chars → hard-split theo max_chars (không còn lựa chọn).
+    - Text <= max_chars → trả [text].
+    """
+    text = text.strip()
+    if len(text) <= max_chars or max_chars <= 0:
+        return [text] if text else []
+
+    parts: List[str] = []
+    current = ""
+    for sent in _SENTENCE_SPLIT_RE.split(text):
+        sent = sent.strip()
+        if not sent:
+            continue
+        # Câu đơn quá dài → xả current, hard-split câu này
+        if len(sent) > max_chars:
+            if current:
+                parts.append(current)
+                current = ""
+            for i in range(0, len(sent), max_chars):
+                parts.append(sent[i:i + max_chars])
+            continue
+        # Gộp câu vào current nếu vẫn vừa
+        candidate = f"{current} {sent}".strip() if current else sent
+        if len(candidate) <= max_chars:
+            current = candidate
+        else:
+            parts.append(current)
+            current = sent
+    if current:
+        parts.append(current)
+    return parts
 
 
 def time_to_ms(t: str) -> int:
@@ -80,13 +119,14 @@ class SRTParser:
         content = content.replace("\r\n", "\n").replace("\r", "\n")
         blocks = re.split(r"\n{2,}", content.strip())
         segments: List[Segment] = []
+        next_idx = 1  # re-index tuần tự (sub-segments không trùng file name)
 
         for block in blocks:
             lines = [ln.strip() for ln in block.split("\n") if ln.strip()]
             if len(lines) < 3:
                 continue
             try:
-                idx = int(lines[0])
+                _ = int(lines[0])
             except ValueError:
                 continue
 
@@ -100,14 +140,29 @@ class SRTParser:
             text = clean_text(" ".join(lines[2:]), self.remove_special)
             if not text:
                 continue
-            text = text[: self.max_chars]
 
-            segments.append(Segment(
-                index=idx,
-                start_ms=time_to_ms(tc.group(1)),
-                end_ms=time_to_ms(tc.group(2)),
-                text=text,
-            ))
+            start_ms = time_to_ms(tc.group(1))
+            end_ms = time_to_ms(tc.group(2))
+            # Split câu dài → nhiều sub-segments, chia timing tuyến tính theo char
+            parts = split_long_text(text, self.max_chars)
+            if not parts:
+                continue
+            total_chars = sum(len(p) for p in parts) or 1
+            total_dur = max(0, end_ms - start_ms)
+            cur_start = start_ms
+            for i, part in enumerate(parts):
+                if i == len(parts) - 1:
+                    part_end = end_ms  # phần cuối bám sát end_ms gốc
+                else:
+                    part_end = cur_start + int(total_dur * len(part) / total_chars)
+                segments.append(Segment(
+                    index=next_idx,
+                    start_ms=cur_start,
+                    end_ms=part_end,
+                    text=part,
+                ))
+                next_idx += 1
+                cur_start = part_end
         return segments
 
 
@@ -153,16 +208,19 @@ class TXTParser:
         lines = [ln.strip() for ln in content.splitlines() if ln.strip()]
         segments: List[Segment] = []
         cursor_ms = 0
-        for i, line in enumerate(lines, 1):
-            line = line[: self.max_chars]
-            duration = max(len(line) * ms_per_char, 500)
-            segments.append(Segment(
-                index=i,
-                start_ms=cursor_ms,
-                end_ms=cursor_ms + duration,
-                text=line,
-            ))
-            cursor_ms += duration + 300  # 300ms gap
+        next_idx = 1
+        for line in lines:
+            # Split câu dài → nhiều sub-segments (không truncate)
+            for part in split_long_text(line, self.max_chars):
+                duration = max(len(part) * ms_per_char, 500)
+                segments.append(Segment(
+                    index=next_idx,
+                    start_ms=cursor_ms,
+                    end_ms=cursor_ms + duration,
+                    text=part,
+                ))
+                cursor_ms += duration + 300  # 300ms gap
+                next_idx += 1
         return segments
 
 
