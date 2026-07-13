@@ -17,6 +17,7 @@ def check_dependencies() -> list[str]:
     required = {
         "customtkinter": "customtkinter",
         "edge_tts": "edge-tts",
+        "cryptography": "cryptography",
     }
     for module, package in required.items():
         try:
@@ -26,6 +27,38 @@ def check_dependencies() -> list[str]:
     return missing
 
 
+def _license_gate() -> tuple:
+    """Kiểm tra license trước khi vào app.
+
+    Trả về (should_launch: bool, user_name: str, license_status: str).
+    should_launch = False → main() thoát (user đóng activation window).
+    """
+    from core.license import check_license_fast, check_license
+
+    # Fast path: chỉ đọc cache local (~5ms, không mạng)
+    status, name = check_license_fast()
+
+    if status == "active":
+        # Cache còn hạn → vào app ngay. Verify online chạy background trong app.
+        return (True, name, status)
+
+    if status == "expired":
+        # Cache hết hạn → blocking online verify
+        status, name = check_license()
+
+    if status in ("no_key", "revoked", "not_found", "offline"):
+        # Chưa activate hoặc bị chặn → mở activation window
+        from ui.activation import ActivationWindow
+        win = ActivationWindow(initial_status=status, user_name=name)
+        win.mainloop()
+        if not win.should_launch:
+            return (False, "", status)  # user đóng, không activate
+        name = getattr(win, "_user_name", name)
+        status = "active"
+
+    return (True, name, status)
+
+
 def main():
     # Kiểm tra thư viện
     missing = check_dependencies()
@@ -33,7 +66,6 @@ def main():
         print(f"[Error] Thiếu thư viện: {', '.join(missing)}")
         print(f"Chạy lệnh: pip install {' '.join(missing)}")
 
-        # Hỏi auto-install nếu chạy trực tiếp
         import subprocess
         ans = input("Tự động cài đặt bây giờ? (y/n): ").strip().lower()
         if ans == "y":
@@ -41,9 +73,14 @@ def main():
         else:
             sys.exit(1)
 
+    # License gate — chặn app nếu chưa activate / bị revoke / offline hết hạn
+    should_launch, user_name, license_status = _license_gate()
+    if not should_launch:
+        sys.exit(0)
+
     # Khởi chạy GUI
     from ui.app import App
-    app = App()
+    app = App(user_name=user_name, license_status=license_status)
     app.mainloop()
 
 

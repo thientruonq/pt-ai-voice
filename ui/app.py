@@ -14,8 +14,10 @@ MIN_SIZE = (780, 540)
 
 
 class App(ctk.CTk):
-    def __init__(self):
+    def __init__(self, user_name: str = "", license_status: str = "active"):
         self.config = ConfigManager()
+        self._user_name = user_name
+        self._license_status = license_status
 
         # Áp dụng theme trước khi tạo window
         ctk.set_appearance_mode(self.config.get("theme", "dark"))
@@ -28,6 +30,13 @@ class App(ctk.CTk):
 
         self._build_ui()
         self.protocol("WM_DELETE_WINDOW", self._on_close)
+
+        # Nếu vào app với cache active → verify online background (không block UI)
+        if license_status == "active":
+            import threading
+            threading.Thread(target=self._bg_license_verify, daemon=True).start()
+        # Sau 24h → recheck license (revoke phát hiện tối đa 24h delay)
+        self.after(24 * 3600 * 1000, self._periodic_license_check)
 
     def _build_ui(self):
         # ── Header ─────────────────────────────────────────────────────────
@@ -110,6 +119,39 @@ class App(ctk.CTk):
         # Refresh engine badge
         engine = self.config.get("tts_engine", "edge").upper()
         self.engine_badge.configure(text=f"  Engine: {engine}  ")
+
+    # ── License checks ─────────────────────────────────────────────────────
+
+    def _bg_license_verify(self):
+        """Background verify online sau khi app đã start (không block UI).
+        Nếu key bị revoke → close app ngay."""
+        try:
+            from core.license import check_license
+            status, _ = check_license()
+            if status in ("revoked", "not_found"):
+                self.after(0, self._handle_license_lost, status)
+        except Exception as e:
+            print(f"[License] bg verify fail: {e}")
+
+    def _periodic_license_check(self):
+        """Recheck 24h/lần trong background thread."""
+        import threading
+        threading.Thread(target=self._bg_license_verify, daemon=True).start()
+        # Schedule tiếp check sau 24h nữa
+        self.after(24 * 3600 * 1000, self._periodic_license_check)
+
+    def _handle_license_lost(self, status: str):
+        """Key bị revoke/not_found → thông báo + đóng app."""
+        from tkinter import messagebox
+        msg = {
+            "revoked": "License đã bị thu hồi.\nApp sẽ đóng lại.",
+            "not_found": "License không còn hợp lệ.\nApp sẽ đóng lại.",
+        }.get(status, "License không hợp lệ.\nApp sẽ đóng lại.")
+        try:
+            messagebox.showerror("License", msg)
+        except Exception:
+            pass
+        self.destroy()
 
     def _on_close(self):
         # Tắt sidecar VieNeu nếu đang chạy (process leak nếu skip)
