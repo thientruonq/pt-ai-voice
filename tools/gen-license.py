@@ -6,15 +6,14 @@ Sinh random License Key format PTAV-XXXX-XXXX-XXXX (12 hex chars uppercase).
 Copy vào clipboard sẵn để paste vào Google Sheet.
 
 Usage:
-    python tools/gen-license.py                              # 1 key, copy clipboard
-    python tools/gen-license.py --count 5                    # 5 keys 1 lượt
+    python tools/gen-license.py                        # 1 key, copy clipboard
+    python tools/gen-license.py --count 5              # 5 keys 1 lượt
     python tools/gen-license.py --name "Nguyễn A" \\
-                               --email "a@gmail.com" \\
-                               --max 2                       # in ra TSV row cho Sheet
-    python tools/gen-license.py --no-clip                    # không copy clipboard
+                               --max 2                 # in ra TSV row cho Sheet
+    python tools/gen-license.py --no-clip              # không copy clipboard
 
-Sheet paste TSV: mỗi row 7 cột (Key/Tên/Email/Status/Ngày/Số/Max) — copy TSV
-xong click ô A2 trong Sheet → paste → tự fill 7 cột.
+Sheet paste TSV: mỗi row 6 cột (Key/Tên/Status/Ngày/Số/Max) — copy TSV
+xong click ô A2 trong Sheet → paste → tự fill 6 cột.
 """
 from __future__ import annotations
 
@@ -76,13 +75,13 @@ def _copy_to_clipboard(text: str) -> bool:
     return False
 
 
-def _format_tsv_row(key: str, name: str, email: str, max_devices) -> str:
-    """Format 1 row TSV theo schema Sheet: Key/Tên/Email/Status/Ngày/Số/Max.
-    Cột Số (F) để trống → server tự update.
+def _format_tsv_row(key: str, name: str, max_devices) -> str:
+    """Format 1 row TSV theo schema Sheet: Key/Tên/Status/Ngày/Số/Max.
+    Cột Số (E) để trống → server tự update.
     """
     today = _dt.datetime.now().strftime("%Y-%m-%d")
     max_str = str(max_devices) if max_devices not in (None, "") else ""
-    return "\t".join([key, name, email, "active", today, "", max_str])
+    return "\t".join([key, name, "active", today, "", max_str])
 
 
 def main():
@@ -94,9 +93,8 @@ def main():
     ap.add_argument("--count", "-n", type=int, default=1,
                     help="Số key sinh ra (default 1)")
     ap.add_argument("--name", default="", help="Tên user (cột B trong Sheet)")
-    ap.add_argument("--email", default="", help="Email user (cột C)")
     ap.add_argument("--max", dest="max_devices", default="",
-                    help="Max thiết bị (cột G — để trống = không giới hạn)")
+                    help="Max thiết bị (cột F — để trống = không giới hạn)")
     ap.add_argument("--no-clip", action="store_true",
                     help="KHÔNG copy vào clipboard")
     ap.add_argument("--tsv", action="store_true",
@@ -110,10 +108,10 @@ def main():
     keys = [_gen_key() for _ in range(args.count)]
 
     # Nếu có metadata → format TSV row cho từng key
-    want_tsv = args.tsv or bool(args.name) or bool(args.email) or bool(args.max_devices)
+    want_tsv = args.tsv or bool(args.name) or bool(args.max_devices)
 
     if want_tsv:
-        rows = [_format_tsv_row(k, args.name, args.email, args.max_devices) for k in keys]
+        rows = [_format_tsv_row(k, args.name, args.max_devices) for k in keys]
         clip_content = "\n".join(rows)
         print("┌" + "─" * 78 + "┐")
         print("│ TSV rows (paste ô A2 trong Sheet):" + " " * 43 + "│")

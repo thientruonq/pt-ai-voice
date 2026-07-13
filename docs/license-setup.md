@@ -27,15 +27,17 @@ Hướng dẫn deploy hệ thống License validation (Google Sheet + Apps Scrip
 3. Header hàng 1:
 
 | A | B | C | D | E | F | G |
-|---|---|---|---|---|---|---|
-| License Key | Tên | Email | Status | Ngày cấp | Số thiết bị | Max thiết bị |
+|---|---|---|---|---|---|
+| License Key | Tên | Status | Ngày cấp | Số thiết bị | Max thiết bị |
 
-4. Thêm sample data:
+**Nhanh nhất:** để Sheet trống, bấm menu **⚙️ PT AI Voice → ➕ Tạo license key mới** — script tự setup header + append row đầu tiên.
 
-| License Key | Tên | Email | Status | Ngày cấp | Số thiết bị | Max thiết bị |
-|---|---|---|---|---|---|---|
-| PTAV-ABCD-1234-EFGH | Nguyễn A | a@gmail.com | active | 2026-07-13 | (auto) | 2 |
-| PTAV-EFGH-5678-IJKL | Trần B | b@gmail.com | revoked | 2026-07-13 | (auto) | 3 |
+4. Sample data (nếu tự làm thủ công):
+
+| License Key | Tên | Status | Ngày cấp | Số thiết bị | Max thiết bị |
+|---|---|---|---|---|---|
+| PTAV-ABCD-1234-EFGH | Nguyễn A | active | 2026-07-13 | (auto) | 2 |
+| PTAV-EFGH-5678-IJKL | Trần B | revoked | 2026-07-13 | (auto) | 3 |
 
 **Status:** `active` (cho dùng) hoặc `revoked` (bị chặn)
 **Max thiết bị:** để trống = không giới hạn, `0` = chặn tất cả, `N` = giới hạn N máy
@@ -71,13 +73,13 @@ Paste URL vừa copy. Rebuild `.exe` và ship cho user.
 
 **Cách 1 (khuyên dùng — 1 click):**
 1. Mở Sheet → menu **⚙️ PT AI Voice → ➕ Tạo license key mới**
-2. Nhập Tên (bắt buộc), Email (tùy chọn), Max thiết bị (tùy chọn)
+2. Nhập Tên (bắt buộc), Max thiết bị (tùy chọn — bỏ trống = không giới hạn)
 3. Script auto sinh `PTAV-XXXX-XXXX-XXXX` + append row vào Sheet
-4. Dialog hiện key với nút **📋 Copy Key** → paste gửi user qua email/chat
+4. Dialog hiện key với nút **📋 Copy Key** → paste gửi user qua Zalo/email
 
 **Cách 2 (CLI, phải tự copy vào Sheet):**
 ```bash
-python tools/gen-license.py --name "User" --email "x@y.com" --max 2
+python tools/gen-license.py --name "User" --max 2
 # → key + TSV row auto copy clipboard → dán vào Sheet
 ```
 

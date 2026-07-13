@@ -5,17 +5,18 @@
  * ─────────────────────────────────────────────────────────────────────────────
  * 1. Tạo Google Sheet mới tại sheets.google.com
  *    Đặt tên sheet tab đầu tiên là "Licenses"
+ *    (Hoặc để trống — script tự setup khi bấm menu ➕ Tạo license key mới)
  *
- * 2. Tạo header ở hàng 1:
- *    A1: License Key | B1: Tên | C1: Email | D1: Status | E1: Ngày cấp
- *    F1: Số thiết bị | G1: Max thiết bị
+ * 2. Header ở hàng 1 (auto-tạo bởi script, hoặc tự làm):
+ *    A1: License Key | B1: Tên | C1: Status | D1: Ngày cấp
+ *    E1: Số thiết bị | F1: Max thiết bị
  *
- * 3. Thêm dữ liệu từ hàng 2 trở đi, ví dụ:
- *    A2: PTAV-ABCD-1234-EFGH | B2: Nguyễn A | C2: a@gmail.com | D2: active | E2: 2026-07-13 | F2: (tự cập nhật) | G2: 2
- *    A3: PTAV-EFGH-5678-IJKL | B3: Trần B   | C3: b@gmail.com | D3: revoked | E3: 2026-07-13 | F3: (tự cập nhật) | G3: 3
+ * 3. Thêm dữ liệu từ hàng 2 trở đi (hoặc dùng menu ➕):
+ *    A2: PTAV-ABCD-1234-EFGH | B2: Nguyễn A | C2: active | D2: 2026-07-13 | E2: (tự cập nhật) | F2: 2
+ *    A3: PTAV-EFGH-5678-IJKL | B3: Trần B   | C3: revoked | D3: 2026-07-13 | E3: (tự cập nhật) | F3: 3
  *
  *    Status hợp lệ: "active" (cho dùng) | "revoked" (bị chặn)
- *    G (Max thiết bị): Số lượng tối đa thiết bị. Để trống = không giới hạn. 0 = chặn tất cả.
+ *    F (Max thiết bị): Số lượng tối đa thiết bị. Để trống = không giới hạn. 0 = chặn tất cả.
  *
  * 4. Script sẽ tự tạo sheet tab "Devices" khi có request đầu tiên.
  *    Sheet "Devices" lưu: License Key | Device ID | Hostname | Last Seen
@@ -140,9 +141,9 @@ function _processLicenseRequest(key, deviceId, hostname) {
       var rowKey = String(licData[i][0]).toUpperCase().trim();
       if (rowKey === key) {
         foundRow   = i;
-        name       = String(licData[i][1] || "").trim();
-        status     = String(licData[i][3] || "").toLowerCase().trim();
-        var rawMax = licData[i][6];
+        name       = String(licData[i][1] || "").trim();       // Cột B: Tên
+        status     = String(licData[i][2] || "").toLowerCase().trim();  // Cột C: Status
+        var rawMax = licData[i][5];                              // Cột F: Max
         maxDevices = (rawMax === "" || rawMax === null || rawMax === undefined)
                      ? -1 : (parseInt(rawMax) || 0);
         break;
@@ -169,11 +170,11 @@ function _processLicenseRequest(key, deviceId, hostname) {
 
       if (deviceCount === -1) {
         var realCount = _countDevices(devSheet, key);
-        licSheet.getRange(foundRow + 1, 6).setValue(realCount);
+        licSheet.getRange(foundRow + 1, 5).setValue(realCount);  // Cột E: Số thiết bị
         return _json({ status: "max_devices", name: name, device_count: realCount, max_devices: maxDevices });
       }
 
-      licSheet.getRange(foundRow + 1, 6).setValue(deviceCount);
+      licSheet.getRange(foundRow + 1, 5).setValue(deviceCount);  // Cột E
     }
 
     return _json({ status: "active", name: name, device_count: deviceCount });
@@ -279,7 +280,7 @@ function refreshDeviceCounts() {
   if (!devSheet) {
     var licData = licSheet.getDataRange().getValues();
     for (var i = 1; i < licData.length; i++) {
-      licSheet.getRange(i + 1, 6).setValue(0);
+      licSheet.getRange(i + 1, 5).setValue(0);  // Cột E
     }
     return;
   }
@@ -313,7 +314,7 @@ function refreshDeviceCounts() {
   for (var i = 1; i < licData.length; i++) {
     var licKey = String(licData[i][0]).toUpperCase().trim();
     var count = countMap[licKey] || 0;
-    licSheet.getRange(i + 1, 6).setValue(count);
+    licSheet.getRange(i + 1, 5).setValue(count);  // Cột E: Số thiết bị
   }
 }
 
@@ -355,11 +356,53 @@ function _genLicenseKey() {
 }
 
 /**
+ * Auto-setup sheet "Licenses" nếu chưa có header. Chạy 1 lần, idempotent.
+ * - Rename tab 1 thành "Licenses" nếu Sheet mới toanh (chưa có tab nào tên đó)
+ * - Add 7 cột header nếu A1 trống
+ * - Freeze row 1 + format bold + background xanh nhạt
+ */
+function _ensureLicensesSheetSetup() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName("Licenses");
+
+  // Chưa có tab "Licenses" → rename tab đầu tiên (nếu Sheet trống chưa đổi tên)
+  if (!sheet) {
+    sheet = ss.getSheets()[0];
+    try { sheet.setName("Licenses"); } catch (e) { /* tên trùng — bỏ qua */ }
+  }
+
+  // A1 trống → add header 6 cột
+  var firstCell = sheet.getRange("A1").getValue();
+  if (!firstCell) {
+    var headers = [[
+      "License Key", "Tên", "Status", "Ngày cấp", "Số thiết bị", "Max thiết bị"
+    ]];
+    sheet.getRange(1, 1, 1, 6).setValues(headers);
+    sheet.getRange(1, 1, 1, 6)
+      .setFontWeight("bold")
+      .setBackground("#dbeafe")
+      .setHorizontalAlignment("center");
+    sheet.setFrozenRows(1);
+    // Column widths cho đẹp
+    sheet.setColumnWidth(1, 200);  // Key
+    sheet.setColumnWidth(2, 160);  // Tên
+    sheet.setColumnWidth(3, 90);   // Status
+    sheet.setColumnWidth(4, 110);  // Ngày
+    sheet.setColumnWidth(5, 110);  // Số
+    sheet.setColumnWidth(6, 120);  // Max
+  }
+  return sheet;
+}
+
+/**
  * Menu "➕ Tạo license key mới" → prompt name/email/max → append row Licenses
  * → show dialog có nút Copy để admin gửi key cho user.
  */
 function generateNewLicense() {
   var ui = SpreadsheetApp.getUi();
+
+  // Auto-setup nếu sheet chưa có header
+  _ensureLicensesSheetSetup();
 
   // Prompt name (bắt buộc)
   var nameResp = ui.prompt(
@@ -373,15 +416,6 @@ function generateNewLicense() {
     ui.alert("⚠️ Tên không được để trống.");
     return;
   }
-
-  // Prompt email (optional — Cancel = bỏ qua)
-  var emailResp = ui.prompt(
-    "Tạo License Key mới",
-    "Email (tùy chọn — bỏ trống được):",
-    ui.ButtonSet.OK_CANCEL
-  );
-  if (emailResp.getSelectedButton() !== ui.Button.OK) return;
-  var email = emailResp.getResponseText().trim();
 
   // Prompt max devices (optional — trống = không giới hạn)
   var maxResp = ui.prompt(
@@ -402,8 +436,7 @@ function generateNewLicense() {
   }
 
   // Kiểm tra collision (rất hiếm nhưng để chắc)
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var licSheet = ss.getSheetByName("Licenses") || ss.getSheets()[0];
+  var licSheet = _ensureLicensesSheetSetup();
   var existing = licSheet.getRange("A:A").getValues()
     .map(function(r) { return String(r[0]).toUpperCase().trim(); });
 
@@ -413,18 +446,18 @@ function generateNewLicense() {
     if (existing.indexOf(key) === -1) break;
   }
 
-  // Append row: [key, name, email, active, ngày, số (blank), max]
+  // Append row: [key, name, active, ngày, số (blank), max]
   var today = Utilities.formatDate(new Date(), Session.getScriptTimeZone() || "GMT", "yyyy-MM-dd");
-  licSheet.appendRow([key, name, email, "active", today, "", maxDev]);
+  licSheet.appendRow([key, name, "active", today, "", maxDev]);
 
   // Show dialog có nút Copy
-  _showKeyDialog(key, name, email, maxDev);
+  _showKeyDialog(key, name, maxDev);
 }
 
 /**
  * Hiện HTML dialog với key + nút Copy (dùng clipboard API).
  */
-function _showKeyDialog(key, name, email, maxDev) {
+function _showKeyDialog(key, name, maxDev) {
   var maxStr = (maxDev === "" || maxDev === null) ? "Không giới hạn" : String(maxDev);
   var html = ''
     + '<style>'
@@ -444,7 +477,6 @@ function _showKeyDialog(key, name, email, maxDev) {
     + '</style>'
     + '<div>'
     + '  <div class="info"><b>Tên:</b> ' + _escapeHtml(name) + '</div>'
-    + (email ? '  <div class="info"><b>Email:</b> ' + _escapeHtml(email) + '</div>' : '')
     + '  <div class="info"><b>Max thiết bị:</b> ' + _escapeHtml(maxStr) + '</div>'
     + '  <div class="key-box">'
     + '    <div class="key" id="key">' + key + '</div>'
