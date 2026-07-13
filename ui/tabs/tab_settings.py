@@ -177,11 +177,12 @@ class SettingsTab(ctk.CTkFrame):
                 command=self._apply_theme,
             ).grid(row=0, column=i + 1, padx=8)
         # ── OmniVoice Credentials ─────────────────────────────────────────
-        self._section(scroll, "🎭 OmniVoice (Colab) Credentials")
+        self._omni_section_header = self._section(scroll, "🎭 OmniVoice (Colab) Credentials")
 
         ov = ctk.CTkFrame(scroll, fg_color="transparent")
         ov.pack(fill="x", padx=8, pady=4)
         ov.columnconfigure(1, weight=1)
+        self._omni_section_frame = ov
 
         ctk.CTkLabel(ov, text="Server URL(s):", width=140, anchor="nw").grid(
             row=0, column=0, sticky="nw", pady=3)
@@ -217,10 +218,11 @@ class SettingsTab(ctk.CTkFrame):
         ).grid(row=2, column=0, columnspan=3, sticky="w", padx=4, pady=(2, 6))
 
         # ── Google Credentials ────────────────────────────────────────────
-        self._section(scroll, "☁ Google Cloud TTS Credentials")
+        self._google_section_header = self._section(scroll, "☁ Google Cloud TTS Credentials")
 
         gc = ctk.CTkFrame(scroll, fg_color="transparent")
         gc.pack(fill="x", padx=8, pady=4)
+        self._google_section_frame = gc
 
         ctk.CTkLabel(gc, text="File JSON:", width=120, anchor="w").grid(row=0, column=0)
         self.cred_label = ctk.CTkLabel(gc, text="Chưa nạp", text_color="gray", anchor="w")
@@ -228,7 +230,9 @@ class SettingsTab(ctk.CTkFrame):
         ctk.CTkButton(gc, text="📂 Nạp file", width=100, command=self._load_google_json).grid(row=0, column=2, padx=8)
 
         # ── FFmpeg ────────────────────────────────────────────────────────
-        self._section(scroll, "⚙ FFmpeg")
+        # Save FFmpeg header làm mốc — OmniVoice/Google section re-pack
+        # 'before' widget này để giữ đúng thứ tự khi user đổi engine.
+        self._ffmpeg_section_header = self._section(scroll, "⚙ FFmpeg")
         ff = ctk.CTkFrame(scroll, fg_color="transparent")
         ff.pack(fill="x", padx=8, pady=4)
         ctk.CTkLabel(ff, text="Đường dẫn:", width=120, anchor="w").grid(row=0, column=0)
@@ -276,6 +280,7 @@ class SettingsTab(ctk.CTkFrame):
         f = ctk.CTkFrame(parent, fg_color=("#d0d0d0", "#2a2a2a"), corner_radius=6)
         f.pack(fill="x", padx=4, pady=(12, 2))
         ctk.CTkLabel(f, text=title, font=("Segoe UI", 13, "bold")).pack(anchor="w", padx=10, pady=4)
+        return f
 
     def _field(self, parent, label: str, key: str, row: int, hint: str = ""):
         ctk.CTkLabel(parent, text=label, width=130, anchor="w").grid(row=row, column=0, sticky="w", pady=3)
@@ -372,25 +377,47 @@ class SettingsTab(ctk.CTkFrame):
                 print(f"[VieNeu] check install fail: {e}")
 
     def _refresh_engine_specific_ui(self):
-        """Hide/show widgets theo engine hiện tại:
-        - VieNeu: ẩn sliders speed/volume/pitch (không hỗ trợ), hiện nút clone/uninstall
-        - Engine khác: ẩn nút VieNeu, hiện sliders."""
+        """Hide/show widgets theo engine hiện tại — chỉ hiện phần cài đặt của
+        engine đang chọn:
+        - Edge: chỉ sliders (Speed/Volume/Pitch)
+        - Google: chỉ section Google Credentials
+        - OmniVoice: chỉ section OmniVoice Credentials
+        - VieNeu: chỉ nút clone/uninstall (ẩn sliders — không hỗ trợ)
+        """
         engine = self.engine_var.get()
         is_vieneu = (engine == "vieneu")
+        is_omni = (engine == "omnivoice")
+        is_google = (engine == "google")
 
-        # Sliders speed/volume/pitch — VieNeu không hỗ trợ
+        # Sliders speed/volume/pitch — chỉ Edge dùng (Google có speaking_rate
+        # nhưng thang khác + hiếm chỉnh). VieNeu/OmniVoice không hỗ trợ.
+        show_sliders = (engine == "edge")
         for key in ("speed", "volume", "pitch"):
             ws = getattr(self, f"_slider_{key}_widgets", None)
             if not ws:
                 continue
             for w in ws:
                 try:
-                    if is_vieneu:
-                        w.grid_remove()
-                    else:
+                    if show_sliders:
                         w.grid()
+                    else:
+                        w.grid_remove()
                 except Exception:
                     pass
+
+        # OmniVoice section — chỉ hiện khi engine=omnivoice
+        self._toggle_section(
+            getattr(self, "_omni_section_header", None),
+            getattr(self, "_omni_section_frame", None),
+            show=is_omni,
+        )
+
+        # Google section — chỉ hiện khi engine=google
+        self._toggle_section(
+            getattr(self, "_google_section_header", None),
+            getattr(self, "_google_section_frame", None),
+            show=is_google,
+        )
 
         # VieNeu action buttons
         try:
@@ -414,6 +441,27 @@ class SettingsTab(ctk.CTkFrame):
             self._vn_clone_btn.grid(row=0, column=5, padx=(12, 4))
             self._vn_uninstall_btn.grid(row=0, column=6, padx=4)
             self._vn_hw_label.grid(row=0, column=7, padx=(8, 0))
+
+    def _toggle_section(self, header, frame, show: bool):
+        """Ẩn/hiện cặp (header, content frame) của 1 section. Re-pack 'before'
+        FFmpeg header để giữ đúng thứ tự khi user đổi engine (nếu không, pack
+        lại sẽ đưa section xuống cuối cùng — sau nút Save)."""
+        anchor = getattr(self, "_ffmpeg_section_header", None)
+        for w, opts in ((header, dict(fill="x", padx=4, pady=(12, 2))),
+                        (frame, dict(fill="x", padx=8, pady=4))):
+            if w is None:
+                continue
+            try:
+                if show:
+                    if not w.winfo_ismapped():
+                        if anchor is not None and anchor.winfo_ismapped():
+                            w.pack(**opts, before=anchor)
+                        else:
+                            w.pack(**opts)
+                else:
+                    w.pack_forget()
+            except Exception:
+                pass
 
     def _vieneu_center_popup(self, popup):
         """Đặt popup vào chính giữa app window."""
