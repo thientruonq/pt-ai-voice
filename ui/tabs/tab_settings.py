@@ -30,6 +30,8 @@ class SettingsTab(ctk.CTkFrame):
         self._build_ui()
         # Hide/show VieNeu buttons + ẩn sliders nếu engine = vieneu
         self.after(100, self._refresh_engine_specific_ui)
+        # Ẩn section FFmpeg nếu app tự tìm được (giảm rối UI)
+        self.after(100, self._maybe_hide_ffmpeg_section)
         # Tự động tải giọng sau khi UI dựng xong (silent: bỏ qua cảnh báo OmniVoice rỗng)
         self.after(300, lambda: self._load_voices(show_warnings=False))
 
@@ -235,14 +237,25 @@ class SettingsTab(ctk.CTkFrame):
         self._ffmpeg_section_header = self._section(scroll, "⚙ FFmpeg")
         ff = ctk.CTkFrame(scroll, fg_color="transparent")
         ff.pack(fill="x", padx=8, pady=4)
+        self._ffmpeg_section_frame = ff
         ctk.CTkLabel(ff, text="Đường dẫn:", width=120, anchor="w").grid(row=0, column=0)
-        self.ffmpeg_entry = ctk.CTkEntry(ff, width=300, placeholder_text="Để trống = tự tìm trong PATH")
+        self.ffmpeg_entry = ctk.CTkEntry(ff, width=300,
+                                          placeholder_text="Để trống = tự tìm trong PATH")
         self.ffmpeg_entry.grid(row=0, column=1, padx=4)
         self.ffmpeg_entry.insert(0, self.config.get_adv("ffmpeg_path", ""))
-        ctk.CTkButton(ff, text="Browse", width=80, command=self._pick_ffmpeg).grid(row=0, column=2)
+        ctk.CTkButton(ff, text="Browse", width=80,
+                      command=self._pick_ffmpeg).grid(row=0, column=2)
+        # Hint chỉ hiện khi auto-detect fail — cho user biết vì sao section này bung ra
+        self._ffmpeg_hint = ctk.CTkLabel(
+            ff, text="⚠ Không tự tìm được ffmpeg — nhập đường dẫn thủ công.",
+            text_color="#f59e0b", font=("Segoe UI", 11),
+        )
+        self._ffmpeg_hint.grid(row=1, column=0, columnspan=3, sticky="w", padx=4, pady=(4, 0))
+        self._ffmpeg_hint.grid_remove()  # hidden by default; only show on fail
 
         # ── Advanced ──────────────────────────────────────────────────────
-        self._section(scroll, "🔧 Tùy chọn nâng cao")
+        # Cũng save làm anchor phòng khi FFmpeg header bị ẩn (auto-detect ok)
+        self._advanced_section_header = self._section(scroll, "🔧 Tùy chọn nâng cao")
 
         adv = ctk.CTkFrame(scroll, fg_color="transparent")
         adv.pack(fill="x", padx=8, pady=4)
@@ -442,11 +455,43 @@ class SettingsTab(ctk.CTkFrame):
             self._vn_uninstall_btn.grid(row=0, column=6, padx=4)
             self._vn_hw_label.grid(row=0, column=7, padx=(8, 0))
 
+    def _maybe_hide_ffmpeg_section(self):
+        """Auto-detect ffmpeg. Nếu tìm được → ẩn cả section (giảm rối). Nếu
+        không → giữ section + hiện hint cảnh báo user nhập tay."""
+        try:
+            from core.audio_processor import find_ffmpeg
+            # Truyền custom_path để tôn trọng cấu hình cũ (nếu user đã set + còn dùng được)
+            find_ffmpeg(self.config.get_adv("ffmpeg_path", ""))
+            found = True
+        except Exception:
+            found = False
+
+        header = getattr(self, "_ffmpeg_section_header", None)
+        frame = getattr(self, "_ffmpeg_section_frame", None)
+        hint = getattr(self, "_ffmpeg_hint", None)
+        if found:
+            for w in (header, frame):
+                try:
+                    if w is not None:
+                        w.pack_forget()
+                except Exception:
+                    pass
+        else:
+            # Đảm bảo hiển thị + hint
+            if hint is not None:
+                try:
+                    hint.grid()
+                except Exception:
+                    pass
+
     def _toggle_section(self, header, frame, show: bool):
         """Ẩn/hiện cặp (header, content frame) của 1 section. Re-pack 'before'
-        FFmpeg header để giữ đúng thứ tự khi user đổi engine (nếu không, pack
-        lại sẽ đưa section xuống cuối cùng — sau nút Save)."""
+        FFmpeg header (hoặc Advanced header nếu FFmpeg đang ẩn) để giữ đúng
+        thứ tự khi user đổi engine (nếu không, pack lại sẽ đưa section xuống
+        cuối cùng — sau nút Save)."""
         anchor = getattr(self, "_ffmpeg_section_header", None)
+        if anchor is None or not anchor.winfo_ismapped():
+            anchor = getattr(self, "_advanced_section_header", None)
         for w, opts in ((header, dict(fill="x", padx=4, pady=(12, 2))),
                         (frame, dict(fill="x", padx=8, pady=4))):
             if w is None:
