@@ -1,0 +1,168 @@
+name: Build Windows Release
+
+# Trigger:
+#   - push tag v*.*.* (VD: v2.0.0) → build + auto tạo GitHub Release
+#   - workflow_dispatch → build tay từ tab Actions (không release)
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version override (dùng khi chạy tay)'
+        required: false
+        default: 'dev'
+
+jobs:
+  build-windows:
+    name: Build Windows .exe + installer
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      # ── 1. Checkout source ──────────────────────────────────────────────
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── 2. Setup Python ─────────────────────────────────────────────────
+      # 3.11 = ABI stable cho cryptography 43.0.3 (đã pin trong requirements)
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      # ── 3. Resolve version từ tag (v2.0.0 → 2.0.0) ──────────────────────
+      - name: Resolve version
+        id: version
+        shell: bash
+        run: |
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            VER="${GITHUB_REF_NAME#v}"
+          else
+            VER="${{ github.event.inputs.version }}"
+          fi
+          echo "version=${VER}" >> "$GITHUB_OUTPUT"
+          echo "Resolved version: ${VER}"
+
+      # ── 4. Install Python deps + PyInstaller ────────────────────────────
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller==6.10.0
+
+      # ── 5. Build EXE với PyInstaller (onedir mode) ──────────────────────
+      # UPX không install → tự động skip nén (spec set upx=True nhưng
+      # PyInstaller fallback gracefully nếu upx missing).
+      - name: Build EXE
+        run: |
+          pyinstaller --noconfirm --clean build_windows.spec
+
+      # ── 6. Setup voice_config.json mặc định (empty credentials) ─────────
+      - name: Create default voice_config.json
+        shell: pwsh
+        run: |
+          $config = @{
+            tts_engine = "edge"
+            voice_id = "vi-VN-HoaiMyNeural"
+            speed = "+0%"
+            volume = "+0%"
+            pitch = "+0Hz"
+            output_format = "mp3"
+            output_dir = ""
+            theme = "dark"
+            vieneu_model = ""
+            omnivoice_credentials = @{
+              endpoint = ""
+              voice_kind = "preset"
+            }
+            google_credentials = @{
+              type = "service_account"
+              project_id = ""
+              private_key_id = ""
+              private_key = ""
+              client_email = ""
+              client_id = ""
+              auth_uri = "https://accounts.google.com/o/oauth2/auth"
+              token_uri = "https://oauth2.googleapis.com/token"
+              auth_provider_x509_cert_url = "https://www.googleapis.com/oauth2/v1/certs"
+              client_x509_cert_url = ""
+              universe_domain = "googleapis.com"
+            }
+            advanced = @{
+              silence_between_segments = $true
+              silence_duration_ms = 300
+              use_srt_timing = $true
+              trim_silence = $true
+              remove_special_chars = $true
+              max_chars_per_segment = 500
+              max_workers = 5
+              ffmpeg_path = ""
+              rate_limit = 1.0
+            }
+          }
+          $config | ConvertTo-Json -Depth 4 | Out-File -Encoding utf8 "dist/PT AI Voice/voice_config.json"
+
+      # ── 7. Zip portable — user unzip + double-click .exe ────────────────
+      - name: Create portable ZIP
+        shell: pwsh
+        run: |
+          $zipName = "PT-AI-Voice-v${{ steps.version.outputs.version }}-portable.zip"
+          Compress-Archive -Path "dist/PT AI Voice/*" -DestinationPath $zipName -CompressionLevel Optimal
+          Write-Host "Zip created: $zipName"
+          Get-Item $zipName | Select-Object Name, @{N='SizeMB';E={[math]::Round($_.Length/1MB, 2)}}
+
+      # ── 8. Install Inno Setup (cho installer .exe) ──────────────────────
+      - name: Install Inno Setup
+        run: choco install -y innosetup --no-progress
+
+      # ── 9. Build installer .exe qua Inno Setup ──────────────────────────
+      # Override MyAppVersion từ tag để installer output đúng tên file.
+      - name: Build installer
+        shell: pwsh
+        run: |
+          $ver = "${{ steps.version.outputs.version }}"
+          & 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe' `
+            "/DMyAppVersion=$ver" `
+            installer_windows.iss
+          Get-ChildItem installer_output | Select-Object Name, @{N='SizeMB';E={[math]::Round($_.Length/1MB, 2)}}
+
+      # ── 10. Upload artifacts (build tay xem tại tab Actions) ────────────
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: PT-AI-Voice-Windows-v${{ steps.version.outputs.version }}
+          path: |
+            PT-AI-Voice-*.zip
+            installer_output/*.exe
+          retention-days: 14
+
+      # ── 11. Auto tạo GitHub Release khi push tag ────────────────────────
+      - name: Create GitHub Release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: PT AI Voice ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          body: |
+            ## 🎙 PT AI Voice ${{ github.ref_name }}
+
+            **Cách dùng:**
+            - **Installer** (khuyên dùng): tải `PT_AI_Voice_v*_Setup.exe` → double-click → next next → xong. Có shortcut Desktop + Start Menu.
+            - **Portable**: tải `PT-AI-Voice-v*-portable.zip` → giải nén → double-click `PT AI Voice.exe`.
+
+            **Yêu cầu:**
+            - Windows 10/11
+            - License Key (bấm nhập lần đầu tiên)
+            - Internet (để verify license — sau đó dùng offline 7 ngày OK)
+
+            **Optional:**
+            - Nếu muốn ghép/xử lý audio: cài [FFmpeg](https://www.gyan.dev/ffmpeg/builds/) và thêm vào PATH.
+          files: |
+            PT-AI-Voice-*.zip
+            installer_output/*.exe

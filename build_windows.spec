@@ -81,7 +81,7 @@ exe = EXE(
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
+    upx=False,  # UPX không có trên GitHub Actions runner. Tắt để tránh warning + bảo vệ AV false-positive.
     console=False,          # Ẩn console window (GUI app)
     disable_windowed_traceback=False,
     argv_emulation=False,
@@ -97,7 +97,7 @@ coll = COLLECT(
     a.zipfiles,
     a.datas,
     strip=False,
-    upx=True,
+    upx=False,  # UPX không có trên GitHub Actions runner. Tắt để tránh warning + bảo vệ AV false-positive.
     upx_exclude=[],
     name='PT AI Voice',
 )

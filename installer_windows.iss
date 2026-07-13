@@ -7,7 +7,10 @@
 ; ──────────────────────────────────────────────────────────────────────────────
 
 #define MyAppName "PT AI Voice"
-#define MyAppVersion "2.0.0"
+; MyAppVersion có thể override qua CLI: iscc /DMyAppVersion=X.Y.Z installer_windows.iss
+#ifndef MyAppVersion
+  #define MyAppVersion "2.0.0"
+#endif
 #define MyAppPublisher "PT"
 #define MyAppExeName "PT AI Voice.exe"
 
