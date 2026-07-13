@@ -36,9 +36,20 @@ class SettingsTab(ctk.CTkFrame):
         self.after(300, lambda: self._load_voices(show_warnings=False))
 
     def _build_ui(self):
+        # ── Top bar cố định (không scroll) — chứa nút Lưu bên phải ─────────
+        # User luôn thấy nút Save dù đã kéo tab xuống bao nhiêu.
+        top_bar = ctk.CTkFrame(self, fg_color="transparent")
+        top_bar.pack(fill="x", padx=8, pady=(6, 0))
+        ctk.CTkButton(
+            top_bar, text="💾 Lưu cài đặt", width=150, height=32,
+            fg_color="#2e7d32", hover_color="#1b5e20",
+            font=("Segoe UI", 12, "bold"),
+            command=self._save,
+        ).pack(side="right")
+
         # Scrollable frame
         scroll = ctk.CTkScrollableFrame(self, label_text="")
-        scroll.pack(fill="both", expand=True, padx=8, pady=8)
+        scroll.pack(fill="both", expand=True, padx=8, pady=(4, 8))
 
         # ── Engine ────────────────────────────────────────────────────────
         self._section(scroll, "🔊 Engine TTS")
@@ -279,13 +290,6 @@ class SettingsTab(ctk.CTkFrame):
         self._num_field(num_row, "Khoảng lặng (ms):", "silence_duration_ms", 0, default=300)
         self._num_field(num_row, "Luồng song song:", "max_workers", 1, default=5)
         self._num_field(num_row, "Rate limit (req/s):", "rate_limit", 2, default=1.0)
-
-        # ── Save ─────────────────────────────────────────────────────────
-        ctk.CTkButton(
-            scroll, text="💾 Lưu cài đặt", height=40,
-            fg_color="#2e7d32", hover_color="#1b5e20",
-            command=self._save
-        ).pack(fill="x", padx=8, pady=(16, 4))
 
     # ── UI helpers ──────────────────────────────────────────────────────────
 
