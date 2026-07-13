@@ -375,8 +375,17 @@ class SettingsTab(ctk.CTkFrame):
 
     def _on_engine_change(self):
         """Khi user đổi engine: hiện/ẩn UI tuỳ engine + nếu chọn VieNeu chưa
-        cài thì mở dialog cài. Tự reload voices."""
+        cài thì mở dialog cài. Tự reload voices + refresh badge header ngay."""
         engine = self.engine_var.get()
+        # Persist vào config in-memory (Save mới ghi file) → badge header +
+        # voice_loader + các nơi đọc config.tts_engine sẽ thấy engine mới ngay.
+        self.config.set("tts_engine", engine)
+        # Refresh badge header qua status_cb (app đọc lại config.tts_engine)
+        if self.status_cb:
+            try:
+                self.status_cb("Chưa lưu — nhớ bấm 💾 Lưu cài đặt", "yellow")
+            except Exception:
+                pass
         self._refresh_engine_specific_ui()
         # Reload voices ngay với engine mới (silent: không phiền popup)
         self._load_voices(show_warnings=False)
