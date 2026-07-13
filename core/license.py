@@ -43,7 +43,7 @@ def _ensure_crypto():
 # ══════════════════════════════════════════════════════════════════════════════
 # Hướng dẫn deploy: docs/license-setup.md
 # URL rỗng / chứa "YOUR_GOOGLE" → dev-mode (bypass, return "active", "Dev Mode")
-LICENSE_API_URL = ""
+LICENSE_API_URL = "https://script.google.com/macros/s/AKfycbzHy89nclpwUXLYV_cEwb1GgkxTb05Iyc3Kh6loIQaAHAQb9RTTExvcHIJ98KZwNSqc/exec"
 # ══════════════════════════════════════════════════════════════════════════════
 
 # Số ngày cho phép dùng offline nếu đã verify thành công lần trước
