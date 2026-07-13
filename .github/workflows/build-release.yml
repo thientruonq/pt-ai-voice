@@ -53,57 +53,20 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller==6.10.0
 
+      # ── 4.5. Copy config example → voice_config.json ────────────────────
+      # PyInstaller spec cần file này ở root (datas). File thật gitignored
+      # (có credentials), example có sẵn defaults sạch.
+      - name: Setup default voice_config.json
+        shell: pwsh
+        run: |
+          Copy-Item voice_config.example.json voice_config.json -Force
+          Write-Host "voice_config.json ready:"
+          Get-Content voice_config.json | Select-Object -First 5
+
       # ── 5. Build EXE với PyInstaller (onedir mode) ──────────────────────
-      # UPX không install → tự động skip nén (spec set upx=True nhưng
-      # PyInstaller fallback gracefully nếu upx missing).
       - name: Build EXE
         run: |
           pyinstaller --noconfirm --clean build_windows.spec
-
-      # ── 6. Setup voice_config.json mặc định (empty credentials) ─────────
-      - name: Create default voice_config.json
-        shell: pwsh
-        run: |
-          $config = @{
-            tts_engine = "edge"
-            voice_id = "vi-VN-HoaiMyNeural"
-            speed = "+0%"
-            volume = "+0%"
-            pitch = "+0Hz"
-            output_format = "mp3"
-            output_dir = ""
-            theme = "dark"
-            vieneu_model = ""
-            omnivoice_credentials = @{
-              endpoint = ""
-              voice_kind = "preset"
-            }
-            google_credentials = @{
-              type = "service_account"
-              project_id = ""
-              private_key_id = ""
-              private_key = ""
-              client_email = ""
-              client_id = ""
-              auth_uri = "https://accounts.google.com/o/oauth2/auth"
-              token_uri = "https://oauth2.googleapis.com/token"
-              auth_provider_x509_cert_url = "https://www.googleapis.com/oauth2/v1/certs"
-              client_x509_cert_url = ""
-              universe_domain = "googleapis.com"
-            }
-            advanced = @{
-              silence_between_segments = $true
-              silence_duration_ms = 300
-              use_srt_timing = $true
-              trim_silence = $true
-              remove_special_chars = $true
-              max_chars_per_segment = 500
-              max_workers = 5
-              ffmpeg_path = ""
-              rate_limit = 1.0
-            }
-          }
-          $config | ConvertTo-Json -Depth 4 | Out-File -Encoding utf8 "dist/PT AI Voice/voice_config.json"
 
       # ── 7. Zip portable — user unzip + double-click .exe ────────────────
       - name: Create portable ZIP
