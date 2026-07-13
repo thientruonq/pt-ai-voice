@@ -69,9 +69,21 @@ Paste URL vừa copy. Rebuild `.exe` và ship cho user.
 
 ## 4. Cấp key cho user
 
+**Cách 1 (khuyên dùng — 1 click):**
+1. Mở Sheet → menu **⚙️ PT AI Voice → ➕ Tạo license key mới**
+2. Nhập Tên (bắt buộc), Email (tùy chọn), Max thiết bị (tùy chọn)
+3. Script auto sinh `PTAV-XXXX-XXXX-XXXX` + append row vào Sheet
+4. Dialog hiện key với nút **📋 Copy Key** → paste gửi user qua email/chat
+
+**Cách 2 (CLI, phải tự copy vào Sheet):**
+```bash
+python tools/gen-license.py --name "User" --email "x@y.com" --max 2
+# → key + TSV row auto copy clipboard → dán vào Sheet
+```
+
+**Cách 3 (thủ công):**
 1. Mở Sheet → thêm row mới với key format `PTAV-XXXX-XXXX-XXXX`
 2. Status = `active`, Max thiết bị = số máy user được dùng
-3. Gửi key cho user qua email/chat
 
 ## 5. Thu hồi key
 

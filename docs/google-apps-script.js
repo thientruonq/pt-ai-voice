@@ -323,11 +323,166 @@ function refreshDeviceCounts() {
 function onOpen() {
   SpreadsheetApp.getUi()
     .createMenu("⚙️ PT AI Voice")
+    .addItem("➕ Tạo license key mới", "generateNewLicense")
+    .addSeparator()
     .addItem("🔄 Cập nhật số thiết bị + dọn inactive", "refreshDeviceCounts")
     .addSeparator()
     .addItem("⏰ Bật tự động cập nhật mỗi giờ", "setupHourlyTrigger")
     .addItem("❌ Tắt tự động cập nhật", "removeTriggers")
     .addToUi();
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+// TẠO LICENSE KEY MỚI (admin bấm menu để cấp)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Sinh 1 key random format PTAV-XXXX-XXXX-XXXX (hex uppercase).
+ * 16^12 ≈ 2.8e14 → collision không đáng lo.
+ */
+function _genLicenseKey() {
+  var alphabet = "0123456789ABCDEF";
+  var groups = [];
+  for (var g = 0; g < 3; g++) {
+    var s = "";
+    for (var i = 0; i < 4; i++) {
+      s += alphabet.charAt(Math.floor(Math.random() * 16));
+    }
+    groups.push(s);
+  }
+  return "PTAV-" + groups.join("-");
+}
+
+/**
+ * Menu "➕ Tạo license key mới" → prompt name/email/max → append row Licenses
+ * → show dialog có nút Copy để admin gửi key cho user.
+ */
+function generateNewLicense() {
+  var ui = SpreadsheetApp.getUi();
+
+  // Prompt name (bắt buộc)
+  var nameResp = ui.prompt(
+    "Tạo License Key mới",
+    "Tên người dùng (bắt buộc):",
+    ui.ButtonSet.OK_CANCEL
+  );
+  if (nameResp.getSelectedButton() !== ui.Button.OK) return;
+  var name = nameResp.getResponseText().trim();
+  if (!name) {
+    ui.alert("⚠️ Tên không được để trống.");
+    return;
+  }
+
+  // Prompt email (optional — Cancel = bỏ qua)
+  var emailResp = ui.prompt(
+    "Tạo License Key mới",
+    "Email (tùy chọn — bỏ trống được):",
+    ui.ButtonSet.OK_CANCEL
+  );
+  if (emailResp.getSelectedButton() !== ui.Button.OK) return;
+  var email = emailResp.getResponseText().trim();
+
+  // Prompt max devices (optional — trống = không giới hạn)
+  var maxResp = ui.prompt(
+    "Tạo License Key mới",
+    "Max thiết bị (số nguyên; trống = không giới hạn; 0 = chặn):",
+    ui.ButtonSet.OK_CANCEL
+  );
+  if (maxResp.getSelectedButton() !== ui.Button.OK) return;
+  var maxRaw = maxResp.getResponseText().trim();
+  var maxDev = "";
+  if (maxRaw !== "") {
+    var parsed = parseInt(maxRaw, 10);
+    if (isNaN(parsed) || parsed < 0) {
+      ui.alert("⚠️ Max thiết bị phải là số nguyên >= 0.");
+      return;
+    }
+    maxDev = parsed;
+  }
+
+  // Kiểm tra collision (rất hiếm nhưng để chắc)
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var licSheet = ss.getSheetByName("Licenses") || ss.getSheets()[0];
+  var existing = licSheet.getRange("A:A").getValues()
+    .map(function(r) { return String(r[0]).toUpperCase().trim(); });
+
+  var key = "";
+  for (var attempt = 0; attempt < 10; attempt++) {
+    key = _genLicenseKey();
+    if (existing.indexOf(key) === -1) break;
+  }
+
+  // Append row: [key, name, email, active, ngày, số (blank), max]
+  var today = Utilities.formatDate(new Date(), Session.getScriptTimeZone() || "GMT", "yyyy-MM-dd");
+  licSheet.appendRow([key, name, email, "active", today, "", maxDev]);
+
+  // Show dialog có nút Copy
+  _showKeyDialog(key, name, email, maxDev);
+}
+
+/**
+ * Hiện HTML dialog với key + nút Copy (dùng clipboard API).
+ */
+function _showKeyDialog(key, name, email, maxDev) {
+  var maxStr = (maxDev === "" || maxDev === null) ? "Không giới hạn" : String(maxDev);
+  var html = ''
+    + '<style>'
+    + '  body { font-family: Segoe UI, Arial, sans-serif; padding: 16px; color: #1e293b; }'
+    + '  .key-box { background: #f1f5f9; border: 2px dashed #64748b; padding: 14px;'
+    + '             border-radius: 8px; text-align: center; margin: 12px 0; }'
+    + '  .key { font-family: Consolas, monospace; font-size: 22px; font-weight: 700;'
+    + '         color: #2563eb; letter-spacing: 1px; user-select: all; }'
+    + '  .info { font-size: 13px; color: #475569; margin: 4px 0; }'
+    + '  .info b { color: #1e293b; }'
+    + '  button { background: #16a34a; color: white; border: none; padding: 10px 18px;'
+    + '           border-radius: 6px; font-size: 14px; cursor: pointer; font-weight: 600; }'
+    + '  button:hover { background: #15803d; }'
+    + '  button.close { background: #64748b; margin-left: 8px; }'
+    + '  button.close:hover { background: #475569; }'
+    + '  #status { font-size: 12px; color: #16a34a; margin-left: 10px; font-weight: 600; }'
+    + '</style>'
+    + '<div>'
+    + '  <div class="info"><b>Tên:</b> ' + _escapeHtml(name) + '</div>'
+    + (email ? '  <div class="info"><b>Email:</b> ' + _escapeHtml(email) + '</div>' : '')
+    + '  <div class="info"><b>Max thiết bị:</b> ' + _escapeHtml(maxStr) + '</div>'
+    + '  <div class="key-box">'
+    + '    <div class="key" id="key">' + key + '</div>'
+    + '  </div>'
+    + '  <div>'
+    + '    <button onclick="doCopy()">📋 Copy Key</button>'
+    + '    <button class="close" onclick="google.script.host.close()">Đóng</button>'
+    + '    <span id="status"></span>'
+    + '  </div>'
+    + '</div>'
+    + '<script>'
+    + '  function doCopy() {'
+    + '    var text = document.getElementById("key").textContent;'
+    + '    navigator.clipboard.writeText(text).then(function() {'
+    + '      document.getElementById("status").textContent = "✓ Đã copy!";'
+    + '    }, function() {'
+    + '      var r = document.createRange(); r.selectNode(document.getElementById("key"));'
+    + '      window.getSelection().removeAllRanges();'
+    + '      window.getSelection().addRange(r);'
+    + '      document.execCommand("copy");'
+    + '      document.getElementById("status").textContent = "✓ Đã copy!";'
+    + '    });'
+    + '  }'
+    + '</script>';
+
+  var htmlOutput = HtmlService.createHtmlOutput(html)
+    .setWidth(420)
+    .setHeight(280);
+  SpreadsheetApp.getUi().showModalDialog(htmlOutput, "✅ License Key đã tạo");
+}
+
+function _escapeHtml(s) {
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 function setupHourlyTrigger() {
